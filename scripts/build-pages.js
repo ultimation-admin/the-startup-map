@@ -3,7 +3,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 
 console.log("Building for Cloudflare Pages using OpenNext...");
-execSync("npx @opennextjs/cloudflare build --skipWranglerConfigCheck", {
+execSync("npx opennextjs-cloudflare build --skipWranglerConfigCheck", {
   stdio: "inherit",
   env: { ...process.env, SKIP_WRANGLER_CONFIG_CHECK: "true" }
 });
