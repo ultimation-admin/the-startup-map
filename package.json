@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/build-pages.js",
+    "build": "opennextjs-cloudflare build && node scripts/post-build.js",
     "next:build": "next build",
     "pages:build": "node scripts/build-pages.js",
     "start": "next start",
