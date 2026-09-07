@@ -8,6 +8,10 @@ const isPublicRoute = createRouteMatcher([
   "/sso-callback(.*)",
   "/s/(.*)",
   "/p/(.*)",
+  "/privacy-policy(.*)",
+  "/terms-of-service(.*)",
+  "/sitemap.xml",
+  "/robots.txt",
   "/tony-stark-2501(.*)",
   "/api/communities(.*)",
   "/api/listings(.*)",
@@ -16,6 +20,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/media(.*)",
   "/api/profile/sync(.*)",
   "/api/geocode(.*)",
+  "/api/legal(.*)",
 ]);
 
 export default async function middleware(request: any, event: any) {
