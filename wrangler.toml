@@ -1,0 +1,4 @@
+name = "the-startup-map"
+pages_build_output_dir = ".open-next"
+compatibility_date = "2025-04-04"
+compatibility_flags = ["nodejs_compat"]
