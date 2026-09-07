@@ -29,11 +29,17 @@ if (typeof globalThis.process === "undefined") {
 `;
 
   // Inject env binding into fetch handler
-  workerContent = workerContent.replace(
-    /async fetch\(request,\s*env,\s*ctx\)\s*\{/,
-    `async fetch(request, env, ctx) {
-        if (env) { Object.assign(globalThis.process.env, env); }`
-  );
+  const fetchRegex = /async\s+fetch\s*\(\s*([a-zA-Z0-9_$]+)\s*,\s*([a-zA-Z0-9_$]+)\s*,\s*([a-zA-Z0-9_$]+)\s*\)\s*\{/;
+  if (fetchRegex.test(workerContent)) {
+    workerContent = workerContent.replace(
+      fetchRegex,
+      `async fetch($1, $2, $3) {
+        if ($2) { try { Object.assign(globalThis.process.env, $2); } catch (e) {} }`
+    );
+    console.log("✓ Injected environment variable sync into Cloudflare Worker fetch handler");
+  } else {
+    console.warn("! Warning: Could not match fetch(request, env, ctx) signature in worker.js");
+  }
 
   const finalWorkerCode = polyfill + "\n" + workerContent;
 

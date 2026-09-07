@@ -18,7 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/geocode(.*)",
 ]);
 
-export default function middleware(request: any, event: any) {
+export default async function middleware(request: any, event: any) {
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const secretKey = process.env.CLERK_SECRET_KEY;
 
@@ -26,16 +26,21 @@ export default function middleware(request: any, event: any) {
     return NextResponse.next();
   }
 
-  const handler = clerkMiddleware(
-    async (auth, req) => {
-      if (!isPublicRoute(req)) {
-        await auth.protect();
-      }
-    },
-    { publishableKey, secretKey }
-  );
+  try {
+    const handler = clerkMiddleware(
+      async (auth, req) => {
+        if (!isPublicRoute(req)) {
+          await auth.protect();
+        }
+      },
+      { publishableKey, secretKey }
+    );
 
-  return handler(request, event);
+    return await handler(request, event);
+  } catch (err) {
+    console.error("Clerk proxy middleware runtime fallback:", err);
+    return NextResponse.next();
+  }
 }
 
 export const config = {
