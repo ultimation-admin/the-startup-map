@@ -1,0 +1,36 @@
+name: CI / CD Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-and-build:
+    name: Validate, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check TypeScript
+        run: npx tsc --noEmit
+
+      - name: Test Next.js Production Build
+        run: npm run build
+
+      - name: Test Cloudflare Pages OpenNext Bundle
+        run: npm run pages:build
+        env:
+          SKIP_WRANGLER_CONFIG_CHECK: "true"
