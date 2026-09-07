@@ -6,9 +6,6 @@
     "dev": "next dev",
     "build": "next build",
     "pages:build": "node scripts/build-pages.js",
-    "build:worker": "opennextjs-cloudflare build",
-    "preview": "opennextjs-cloudflare build && wrangler dev",
-    "deploy": "opennextjs-cloudflare build && wrangler deploy",
     "start": "next start",
     "lint": "eslint"
   },
