@@ -1,3 +1,8 @@
 import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 
-export default defineCloudflareConfig();
+export default defineCloudflareConfig({
+  incrementalCache: "dummy",
+  tagCache: "dummy",
+  queue: "direct",
+  enableCacheInterception: false,
+});

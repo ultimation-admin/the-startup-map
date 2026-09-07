@@ -10,12 +10,12 @@ execSync("npx opennextjs-cloudflare build --skipWranglerConfigCheck", {
 
 const openNextDir = path.join(process.cwd(), ".open-next");
 const workerSrc = path.join(openNextDir, "worker.js");
-const workerDest = path.join(openNextDir, "_worker.js");
 const assetsDir = path.join(openNextDir, "assets");
 
 if (fs.existsSync(workerSrc)) {
-  const workerContent = fs.readFileSync(workerSrc, "utf8");
+  let workerContent = fs.readFileSync(workerSrc, "utf8");
 
+  // Top-level polyfill for process and process.env
   const polyfill = `// Top-level process polyfill for Cloudflare Pages
 if (typeof globalThis.process === "undefined") {
   globalThis.process = {
@@ -28,14 +28,32 @@ if (typeof globalThis.process === "undefined") {
 }
 `;
 
-  fs.writeFileSync(workerDest, polyfill + "\n" + workerContent);
-  console.log("✓ Created .open-next/_worker.js from worker.js with top-level process polyfill");
+  // Inject env binding into fetch handler
+  workerContent = workerContent.replace(
+    /async fetch\(request,\s*env,\s*ctx\)\s*\{/,
+    `async fetch(request, env, ctx) {
+        if (env) { Object.assign(globalThis.process.env, env); }`
+  );
+
+  const finalWorkerCode = polyfill + "\n" + workerContent;
+
+  // Save _worker.js in .open-next root
+  fs.writeFileSync(path.join(openNextDir, "_worker.js"), finalWorkerCode);
+
+  // Save _worker.js in .open-next/assets root as well
+  if (!fs.existsSync(assetsDir)) {
+    fs.mkdirSync(assetsDir, { recursive: true });
+  }
+  fs.writeFileSync(path.join(assetsDir, "_worker.js"), finalWorkerCode);
+
+  console.log("✓ Generated _worker.js in both .open-next and .open-next/assets");
 } else {
   console.error("Error: .open-next/worker.js was not found");
   process.exit(1);
 }
 
 if (fs.existsSync(assetsDir)) {
+  // Sync assets into .open-next root so static files are accessible at both levels
   fs.cpSync(assetsDir, openNextDir, { recursive: true, force: true });
-  console.log("✓ Merged static assets directly into .open-next root for Cloudflare Pages CDN");
+  console.log("✓ Synchronized static assets across Cloudflare Pages output directories");
 }
