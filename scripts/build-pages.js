@@ -14,12 +14,15 @@ const workerDest = path.join(openNextDir, "_worker.js");
 const assetsDir = path.join(openNextDir, "assets");
 
 if (fs.existsSync(workerSrc)) {
-  // Create _worker.js as an ESM wrapper around worker.js with error logging
   const wrapperCode = `import worker from "./worker.js";
 
 export default {
   async fetch(request, env, ctx) {
     try {
+      if (env) {
+        globalThis.process = globalThis.process || {};
+        globalThis.process.env = { ...globalThis.process.env, ...env };
+      }
       return await worker.fetch(request, env, ctx);
     } catch (err) {
       console.error("Cloudflare Pages Worker Exception:", err);
@@ -37,7 +40,7 @@ export default {
 };
 `;
   fs.writeFileSync(workerDest, wrapperCode);
-  console.log("✓ Created .open-next/_worker.js wrapper for Cloudflare Pages");
+  console.log("✓ Created .open-next/_worker.js wrapper with process.env binding for Cloudflare Pages");
 } else {
   console.error("Error: .open-next/worker.js was not found");
   process.exit(1);
