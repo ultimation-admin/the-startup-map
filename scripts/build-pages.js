@@ -14,7 +14,9 @@ const workerDest = path.join(openNextDir, "_worker.js");
 const assetsDir = path.join(openNextDir, "assets");
 
 if (fs.existsSync(workerSrc)) {
-  const wrapperCode = `// 1. Top-level process polyfill BEFORE any imports
+  const workerContent = fs.readFileSync(workerSrc, "utf8");
+
+  const polyfill = `// Top-level process polyfill for Cloudflare Pages
 if (typeof globalThis.process === "undefined") {
   globalThis.process = {
     env: { NODE_ENV: "production" },
@@ -24,41 +26,16 @@ if (typeof globalThis.process === "undefined") {
 } else if (!globalThis.process.env) {
   globalThis.process.env = { NODE_ENV: "production" };
 }
-
-// 2. Import OpenNext worker bundle
-import worker from "./worker.js";
-
-// 3. Export Pages fetch handler
-export default {
-  async fetch(request, env, ctx) {
-    try {
-      if (env) {
-        Object.assign(globalThis.process.env, env);
-      }
-      return await worker.fetch(request, env, ctx);
-    } catch (err) {
-      console.error("Cloudflare Pages Worker Exception:", err);
-      return new Response(
-        "Application Error (500)\\n\\n" +
-        "Message: " + (err && err.message ? err.message : String(err)) + "\\n\\n" +
-        "Stack:\\n" + (err && err.stack ? err.stack : "No stack trace"),
-        {
-          status: 500,
-          headers: { "content-type": "text/plain; charset=utf-8" }
-        }
-      );
-    }
-  }
-};
 `;
-  fs.writeFileSync(workerDest, wrapperCode);
-  console.log("✓ Created .open-next/_worker.js wrapper with top-level process polyfill for Cloudflare Pages");
+
+  fs.writeFileSync(workerDest, polyfill + "\n" + workerContent);
+  console.log("✓ Created .open-next/_worker.js from worker.js with top-level process polyfill");
 } else {
   console.error("Error: .open-next/worker.js was not found");
   process.exit(1);
 }
 
 if (fs.existsSync(assetsDir)) {
-  fs.cpSync(assetsDir, openNextDir, { recursive: true });
-  console.log("✓ Copied static assets to .open-next root for Cloudflare Pages CDN");
+  fs.cpSync(assetsDir, openNextDir, { recursive: true, force: true });
+  console.log("✓ Merged static assets directly into .open-next root for Cloudflare Pages CDN");
 }
