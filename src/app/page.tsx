@@ -1,8 +1,21 @@
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
+import dynamic from "next/dynamic";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { Map, MapMarker, MarkerContent } from "@/components/ui/map";
 import { Listing, fetchListings } from "@/lib/db";
+
+const Map = dynamic(
+  () => import("@/components/ui/map").then((mod) => mod.Map),
+  { ssr: false }
+);
+const MapMarker = dynamic(
+  () => import("@/components/ui/map").then((mod) => mod.MapMarker),
+  { ssr: false }
+);
+const MarkerContent = dynamic(
+  () => import("@/components/ui/map").then((mod) => mod.MarkerContent),
+  { ssr: false }
+);
 import { AddListingForm } from "@/components/AddListingForm";
 import { UserProfilePanel } from "@/components/UserProfilePanel";
 import { ProfileAvatarStack } from "@/components/ProfileAvatarStack";
@@ -58,6 +71,11 @@ const clerkInlineAppearance = {
 };
 
 export default function Home() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const { user: clerkUser, isSignedIn, isLoaded: isClerkLoaded } = useUser();
   const [listings, setListings] = useState<Listing[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
@@ -1203,80 +1221,86 @@ export default function Home() {
           )}
         </div>
 
-        <Map
-          center={[78.96, 22.0]}
-          zoom={4.3}
-          minZoom={3.5}
-          maxPitch={60}
-          maxBounds={[
-            [67.0, 7.0],
-            [97.0, 36.0],
-          ]}
-          className="map-fill"
-          onLoad={setMap}
-          theme="light"
-          onClick={(e: { lngLat: { lng: number; lat: number } }) => {
-            if (leftView === "add-listing") {
-              setPickedCoords([e.lngLat.lng, e.lngLat.lat]);
-            }
-          }}
-        >
-          {/* Live Picked Location Marker during Listing Creation */}
-          {leftView === "add-listing" && pickedCoords && (
-            <MapMarker
-              longitude={pickedCoords[0]}
-              latitude={pickedCoords[1]}
-              draggable
-              onDragEnd={(lngLat) => setPickedCoords([lngLat.lng, lngLat.lat])}
-            >
-              <MarkerContent>
-                <div className="location-pin-marker">
-                  <MapPinIcon size={14} /> Drop Pin
-                </div>
-              </MarkerContent>
-            </MapMarker>
-          )}
+        {isMounted ? (
+          <Map
+            center={[78.96, 22.0]}
+            zoom={4.3}
+            minZoom={3.5}
+            maxPitch={60}
+            maxBounds={[
+              [67.0, 7.0],
+              [97.0, 36.0],
+            ]}
+            className="map-fill"
+            onLoad={setMap}
+            theme="light"
+            onClick={(e: { lngLat: { lng: number; lat: number } }) => {
+              if (leftView === "add-listing") {
+                setPickedCoords([e.lngLat.lng, e.lngLat.lat]);
+              }
+            }}
+          >
+            {/* Live Picked Location Marker during Listing Creation */}
+            {leftView === "add-listing" && pickedCoords && (
+              <MapMarker
+                longitude={pickedCoords[0]}
+                latitude={pickedCoords[1]}
+                draggable
+                onDragEnd={(lngLat) => setPickedCoords([lngLat.lng, lngLat.lat])}
+              >
+                <MarkerContent>
+                  <div className="location-pin-marker">
+                    <MapPinIcon size={14} /> Drop Pin
+                  </div>
+                </MarkerContent>
+              </MapMarker>
+            )}
 
-          {filtered.map((item: Listing) => (
-            <MapMarker
-              key={item.id}
-              longitude={item.longitude}
-              latitude={item.latitude}
-            >
-              <MarkerContent>
-                <button
-                  className="startup-marker"
-                  style={{ background: item.color }}
-                  onClick={() => {
-                    handleSelectListing(item);
-                    map?.flyTo({
-                      center: [item.longitude, item.latitude],
-                      zoom: 13.5,
-                      pitch: 60,
-                      bearing: -10,
-                      duration: 700,
-                    });
-                  }}
-                >
-                  {item.logo_url ? (
-                    <img
-                      src={item.logo_url}
-                      alt={item.name}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    item.initials
-                  )}
-                </button>
-              </MarkerContent>
-            </MapMarker>
-          ))}
-        </Map>
+            {filtered.map((item: Listing) => (
+              <MapMarker
+                key={item.id}
+                longitude={item.longitude}
+                latitude={item.latitude}
+              >
+                <MarkerContent>
+                  <button
+                    className="startup-marker"
+                    style={{ background: item.color }}
+                    onClick={() => {
+                      handleSelectListing(item);
+                      map?.flyTo({
+                        center: [item.longitude, item.latitude],
+                        zoom: 13.5,
+                        pitch: 60,
+                        bearing: -10,
+                        duration: 700,
+                      });
+                    }}
+                  >
+                    {item.logo_url ? (
+                      <img
+                        src={item.logo_url}
+                        alt={item.name}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      item.initials
+                    )}
+                  </button>
+                </MarkerContent>
+              </MapMarker>
+            ))}
+          </Map>
+        ) : (
+          <div className="map-fill bg-slate-900 flex items-center justify-center text-slate-400 font-sans text-xs font-semibold">
+            Loading Map...
+          </div>
+        )}
         <p className="map-status">
           <i /> <b>{filtered.length}</b> listings
         </p>
