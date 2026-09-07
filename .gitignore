@@ -40,6 +40,7 @@ yarn-error.log*
 
 # vercel & cloudflare
 .vercel
+.open-next
 .agents
 /scratch
 
