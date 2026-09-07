@@ -140,17 +140,22 @@ export async function d1Query<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = []
 ): Promise<T[]> {
-  const db = await getNativeDb();
+  try {
+    const db = await getNativeDb();
 
-  if (db) {
-    const stmt = db.prepare(sql);
-    const bound = params.length > 0 ? stmt.bind(...params) : stmt;
-    const { results } = await bound.all();
-    return results;
+    if (db) {
+      const stmt = db.prepare(sql);
+      const bound = params.length > 0 ? stmt.bind(...params) : stmt;
+      const { results } = await bound.all();
+      return (results || []) as T[];
+    }
+
+    const result = await restQuery<T>(sql, params);
+    return result?.results || [];
+  } catch (err) {
+    console.warn("d1Query fallback (D1 unconfigured or query failed):", err);
+    return [];
   }
-
-  const result = await restQuery<T>(sql, params);
-  return result.results;
 }
 
 /**
@@ -160,16 +165,21 @@ export async function d1QueryFirst<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = []
 ): Promise<T | null> {
-  const db = await getNativeDb();
+  try {
+    const db = await getNativeDb();
 
-  if (db) {
-    const stmt = db.prepare(sql);
-    const bound = params.length > 0 ? stmt.bind(...params) : stmt;
-    return await bound.first();
+    if (db) {
+      const stmt = db.prepare(sql);
+      const bound = params.length > 0 ? stmt.bind(...params) : stmt;
+      return await bound.first();
+    }
+
+    const result = await restQuery<T>(sql, params);
+    return result?.results?.[0] ?? null;
+  } catch (err) {
+    console.warn("d1QueryFirst fallback (D1 unconfigured or query failed):", err);
+    return null;
   }
-
-  const result = await restQuery<T>(sql, params);
-  return result.results[0] ?? null;
 }
 
 /**
@@ -179,23 +189,28 @@ export async function d1Execute(
   sql: string,
   params: unknown[] = []
 ): Promise<ExecuteResult> {
-  const db = await getNativeDb();
+  try {
+    const db = await getNativeDb();
 
-  if (db) {
-    const stmt = db.prepare(sql);
-    const bound = params.length > 0 ? stmt.bind(...params) : stmt;
-    const result = await bound.run();
+    if (db) {
+      const stmt = db.prepare(sql);
+      const bound = params.length > 0 ? stmt.bind(...params) : stmt;
+      const result = await bound.run();
+      return {
+        changes: result.meta?.changes || 0,
+        lastRowId: result.meta?.last_row_id || 0,
+      };
+    }
+
+    const result = await restQuery(sql, params);
     return {
-      changes: result.meta.changes,
-      lastRowId: result.meta.last_row_id,
+      changes: result.meta?.changes || 0,
+      lastRowId: result.meta?.last_row_id || 0,
     };
+  } catch (err) {
+    console.warn("d1Execute fallback (D1 unconfigured or query failed):", err);
+    return { changes: 0, lastRowId: 0 };
   }
-
-  const result = await restQuery(sql, params);
-  return {
-    changes: result.meta.changes,
-    lastRowId: result.meta.last_row_id,
-  };
 }
 
 /**
@@ -205,16 +220,20 @@ export async function d1Execute(
 export async function d1Batch(
   statements: Array<{ sql: string; params?: unknown[] }>
 ): Promise<void> {
-  const db = await getNativeDb();
+  try {
+    const db = await getNativeDb();
 
-  if (db) {
-    const prepared = statements.map((s) => {
-      const stmt = db.prepare(s.sql);
-      return s.params?.length ? stmt.bind(...s.params) : stmt;
-    });
-    await db.batch(prepared);
-    return;
+    if (db) {
+      const prepared = statements.map((s) => {
+        const stmt = db.prepare(s.sql);
+        return s.params?.length ? stmt.bind(...s.params) : stmt;
+      });
+      await db.batch(prepared);
+      return;
+    }
+
+    await restBatch(statements);
+  } catch (err) {
+    console.warn("d1Batch fallback (D1 unconfigured or query failed):", err);
   }
-
-  await restBatch(statements);
 }
