@@ -14,14 +14,26 @@ const workerDest = path.join(openNextDir, "_worker.js");
 const assetsDir = path.join(openNextDir, "assets");
 
 if (fs.existsSync(workerSrc)) {
-  const wrapperCode = `import worker from "./worker.js";
+  const wrapperCode = `// 1. Top-level process polyfill BEFORE any imports
+if (typeof globalThis.process === "undefined") {
+  globalThis.process = {
+    env: { NODE_ENV: "production" },
+    cwd: () => "/",
+    nextTick: (cb, ...args) => setTimeout(() => cb(...args), 0),
+  };
+} else if (!globalThis.process.env) {
+  globalThis.process.env = { NODE_ENV: "production" };
+}
 
+// 2. Import OpenNext worker bundle
+import worker from "./worker.js";
+
+// 3. Export Pages fetch handler
 export default {
   async fetch(request, env, ctx) {
     try {
       if (env) {
-        globalThis.process = globalThis.process || {};
-        globalThis.process.env = { ...globalThis.process.env, ...env };
+        Object.assign(globalThis.process.env, env);
       }
       return await worker.fetch(request, env, ctx);
     } catch (err) {
@@ -40,7 +52,7 @@ export default {
 };
 `;
   fs.writeFileSync(workerDest, wrapperCode);
-  console.log("✓ Created .open-next/_worker.js wrapper with process.env binding for Cloudflare Pages");
+  console.log("✓ Created .open-next/_worker.js wrapper with top-level process polyfill for Cloudflare Pages");
 } else {
   console.error("Error: .open-next/worker.js was not found");
   process.exit(1);
