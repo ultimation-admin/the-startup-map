@@ -6,6 +6,6 @@
     "nodejs_compat"
   ],
   "assets": {
-    "directory": ".vercel/output/static"
+    "directory": ".next"
   }
 }
