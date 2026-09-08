@@ -39,28 +39,24 @@ export default function RootLayout({
         <link rel="preconnect" href="https://unpkg.com" crossOrigin="anonymous" />
       </head>
       <body className={gabarito.className}>
-        {publishableKey ? (
-          <ClerkProvider
-            publishableKey={publishableKey}
-            appearance={{
-              theme: shadcn,
-              variables: {
-                colorPrimary: "#10b981",
-                colorBackground: "#ffffff",
-                borderRadius: "1rem",
-                fontFamily: "var(--font-gabarito), 'Gabarito', sans-serif",
-              },
-              elements: {
-                formButtonPrimary: "bg-[#10b981] hover:bg-[#059669] text-white font-bold rounded-full py-2.5 text-xs shadow-sm transition-all",
-                formFieldInput: "rounded-xl border border-stone-300 focus:border-[#10b981] text-xs py-2",
-              },
-            }}
-          >
-            {children}
-          </ClerkProvider>
-        ) : (
-          children
-        )}
+        <ClerkProvider
+          publishableKey={publishableKey || "pk_test_Y2xlcmsudGhlc3RhcnR1cG1hcC5jb20k"}
+          appearance={{
+            theme: shadcn,
+            variables: {
+              colorPrimary: "#10b981",
+              colorBackground: "#ffffff",
+              borderRadius: "1rem",
+              fontFamily: "var(--font-gabarito), 'Gabarito', sans-serif",
+            },
+            elements: {
+              formButtonPrimary: "bg-[#10b981] hover:bg-[#059669] text-white font-bold rounded-full py-2.5 text-xs shadow-sm transition-all",
+              formFieldInput: "rounded-xl border border-stone-300 focus:border-[#10b981] text-xs py-2",
+            },
+          }}
+        >
+          {children}
+        </ClerkProvider>
       </body>
     </html>
   );
