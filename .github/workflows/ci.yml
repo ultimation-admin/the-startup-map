@@ -30,7 +30,7 @@ jobs:
       - name: Test Next.js Production Build
         run: npm run build
 
-      - name: Test Cloudflare Pages OpenNext Bundle
-        run: npm run pages:build
+      - name: Test OpenNext Cloudflare Worker Bundle
+        run: npx opennextjs-cloudflare build
         env:
           SKIP_WRANGLER_CONFIG_CHECK: "true"
