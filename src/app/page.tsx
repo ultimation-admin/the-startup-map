@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { Listing, fetchListings } from "@/lib/db";
@@ -70,12 +70,16 @@ const clerkInlineAppearance = {
   },
 };
 
-function useSafeUser() {
-  try {
-    return useUser();
-  } catch {
-    return { user: null, isSignedIn: false, isLoaded: false };
-  }
+function ClerkUserSubscriber({
+  onAuthChange,
+}: {
+  onAuthChange: (auth: { user: any; isSignedIn: boolean; isLoaded: boolean }) => void;
+}) {
+  const { user, isSignedIn, isLoaded } = useUser();
+  useEffect(() => {
+    onAuthChange({ user: user || null, isSignedIn: !!isSignedIn, isLoaded: !!isLoaded });
+  }, [user, isSignedIn, isLoaded, onAuthChange]);
+  return null;
 }
 
 export default function Home() {
@@ -84,7 +88,16 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
-  const { user: clerkUser, isSignedIn, isLoaded: isClerkLoaded } = useSafeUser();
+  const [authData, setAuthData] = useState<{ user: any; isSignedIn: boolean; isLoaded: boolean }>({
+    user: null,
+    isSignedIn: false,
+    isLoaded: false,
+  });
+  const { user: clerkUser, isSignedIn, isLoaded: isClerkLoaded } = authData;
+
+  const handleAuthChange = useCallback((auth: { user: any; isSignedIn: boolean; isLoaded: boolean }) => {
+    setAuthData(auth);
+  }, []);
   const [listings, setListings] = useState<Listing[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [query, setQuery] = useState("");
@@ -912,6 +925,7 @@ export default function Home() {
 
   return (
     <main className={`canvas ${isMobileDrawerExpanded ? "drawer-open" : "drawer-closed"}`}>
+      {isMounted && <ClerkUserSubscriber onAuthChange={handleAuthChange} />}
       {/* LEFT: Controls */}
       <aside className="controls">
         <header className="top-bar">
