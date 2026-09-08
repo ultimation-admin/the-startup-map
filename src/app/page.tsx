@@ -70,13 +70,21 @@ const clerkInlineAppearance = {
   },
 };
 
+function useSafeUser() {
+  try {
+    return useUser();
+  } catch {
+    return { user: null, isSignedIn: false, isLoaded: false };
+  }
+}
+
 export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  const { user: clerkUser, isSignedIn, isLoaded: isClerkLoaded } = useUser();
+  const { user: clerkUser, isSignedIn, isLoaded: isClerkLoaded } = useSafeUser();
   const [listings, setListings] = useState<Listing[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [query, setQuery] = useState("");
