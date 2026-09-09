@@ -96,16 +96,9 @@ export function SpotlightsBar({
     const isVid = file.type.startsWith("video/");
     setMediaType(isVid ? "video" : "image");
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaUrl(reader.result as string);
-      setIsUploading(false);
-    };
-    reader.onerror = () => {
-      alert("Failed to read media file.");
-      setIsUploading(false);
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setMediaUrl(previewUrl);
+    setIsUploading(false);
   };
 
   const handleBookSpotlight = async (e: React.FormEvent) => {

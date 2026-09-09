@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { SignIn, SignOutButton, useUser } from "@clerk/nextjs";
 import { Listing, ReviewState, UserProfile, CommunityPost, Community } from "@/lib/db";
 import {
   CheckIcon,
@@ -22,7 +23,37 @@ import {
 import { AdminTableSkeleton } from "@/components/Skeletons";
 import { DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from "@/lib/legalContent";
 
-type AdminSection = "dashboard" | "profiles" | "users" | "posts" | "communities" | "legal";
+type AdminSection = "dashboard" | "profiles" | "users" | "posts" | "communities" | "legal" | "access";
+
+function AdminAuthSubscriber({
+  onAuthChange,
+}: {
+  onAuthChange: (auth: { user: any; isSignedIn: boolean; isLoaded: boolean }) => void;
+}) {
+  const { user, isSignedIn, isLoaded } = useUser();
+  const prevRef = useRef<{ userId: string; isSignedIn: boolean; isLoaded: boolean }>({
+    userId: "",
+    isSignedIn: false,
+    isLoaded: false,
+  });
+
+  useEffect(() => {
+    const currentUserId = user?.id || "";
+    const currentIsSignedIn = !!isSignedIn;
+    const currentIsLoaded = !!isLoaded;
+
+    if (
+      currentUserId !== prevRef.current.userId ||
+      currentIsSignedIn !== prevRef.current.isSignedIn ||
+      currentIsLoaded !== prevRef.current.isLoaded
+    ) {
+      prevRef.current = { userId: currentUserId, isSignedIn: currentIsSignedIn, isLoaded: currentIsLoaded };
+      onAuthChange({ user: user || null, isSignedIn: currentIsSignedIn, isLoaded: currentIsLoaded });
+    }
+  }, [user, isSignedIn, isLoaded, onAuthChange]);
+
+  return null;
+}
 
 export default function TonyStarkAdminPage() {
   const [activeSection, setActiveSection] = useState<AdminSection>("dashboard");
@@ -60,7 +91,6 @@ export default function TonyStarkAdminPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-passkey": passkeyInput.trim(),
         },
         body: JSON.stringify({ doc: selectedLegalDoc, content }),
       });
@@ -75,51 +105,61 @@ export default function TonyStarkAdminPage() {
     }
   };
 
-  // Security Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passkeyInput, setPasskeyInput] = useState("");
-  const [authError, setAuthError] = useState("");
-
+  // Security Authentication State via Clerk OAuth
+  const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedAuth = sessionStorage.getItem("ts_admin_authenticated");
-      if (savedAuth === "true") {
-        setIsAuthenticated(true);
-      }
-    }
+    setIsMounted(true);
   }, []);
 
-  const handleAuthenticate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError("");
-    try {
-      const res = await fetch("/api/admin/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passkey: passkeyInput.trim() }),
-      });
-      const data = await res.json();
+  const [clerkAuth, setClerkAuth] = useState<{ user: any; isSignedIn: boolean; isLoaded: boolean }>({
+    user: null,
+    isSignedIn: false,
+    isLoaded: false,
+  });
+  const { user: clerkUser, isSignedIn, isLoaded: isClerkLoaded } = clerkAuth;
 
-      if (res.ok && data.authorized) {
+  const handleAuthChange = useCallback((auth: { user: any; isSignedIn: boolean; isLoaded: boolean }) => {
+    setClerkAuth(auth);
+  }, []);
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  const verifyAdminAccess = async () => {
+    const userEmails = (clerkUser?.emailAddresses || []).map((e: any) => e.emailAddress?.toLowerCase().trim());
+    const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress?.toLowerCase().trim() || userEmails[0] || "";
+    const isUltimationEmail = userEmails.includes("ultimation.teams@gmail.com") || primaryEmail === "ultimation.teams@gmail.com";
+
+    if (!isUltimationEmail) {
+      setIsAuthenticated(false);
+      setAuthError(`ACCESS DENIED: Account (${primaryEmail || "your account"}) is not authorized for Admin access. Strictly only ultimation.teams@gmail.com is granted access.`);
+      return;
+    }
+
+    try {
+      await fetch("/api/profile/sync", { method: "POST" }).catch(() => {});
+      const res = await fetch("/api/admin/listings");
+      if (res.ok) {
         setIsAuthenticated(true);
         setAuthError("");
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("ts_admin_authenticated", "true");
-        }
+      } else if (res.status === 403 || res.status === 401) {
+        setIsAuthenticated(false);
+        setAuthError(`ACCESS DENIED: Account (${primaryEmail}) failed server security clearance. Strictly only ultimation.teams@gmail.com is granted access.`);
       } else {
-        setAuthError(data.error || "ACCESS DENIED: Invalid Security Passkey Code. Incident Logged.");
+        setIsAuthenticated(false);
       }
-    } catch (err) {
-      setAuthError("ACCESS DENIED: Verification request failed.");
+    } catch {
+      setIsAuthenticated(false);
     }
   };
 
-  const handleSignOutAdmin = () => {
-    setIsAuthenticated(false);
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("ts_admin_authenticated");
+  useEffect(() => {
+    if (isSignedIn && clerkUser) {
+      verifyAdminAccess();
+    } else {
+      setIsAuthenticated(false);
     }
-  };
+  }, [isSignedIn, clerkUser]);
 
   // Data States
   const [listings, setListings] = useState<Listing[]>([]);
@@ -200,8 +240,6 @@ export default function TonyStarkAdminPage() {
   useEffect(() => {
     if (isAuthenticated) {
       loadAllData(true);
-      const interval = setInterval(() => loadAllData(false), 15000);
-      return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
@@ -482,13 +520,15 @@ export default function TonyStarkAdminPage() {
           padding: "20px",
         }}
       >
+        {isMounted && <AdminAuthSubscriber onAuthChange={handleAuthChange} />}
+
         <div
           style={{
             maxWidth: "440px",
             width: "100%",
             background: "#111726",
-            border: "1px solid rgba(239, 68, 68, 0.25)",
-            borderRadius: "20px",
+            border: "1px solid rgba(16, 185, 129, 0.3)",
+            borderRadius: "24px",
             padding: "36px 32px",
             boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
             textAlign: "center",
@@ -500,9 +540,9 @@ export default function TonyStarkAdminPage() {
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
-              background: "rgba(239, 68, 68, 0.15)",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              color: "#f87171",
+              background: "rgba(16, 185, 129, 0.15)",
+              border: "1px solid rgba(16, 185, 129, 0.3)",
+              color: "#10b981",
               padding: "6px 14px",
               borderRadius: "100px",
               fontSize: "11px",
@@ -511,83 +551,74 @@ export default function TonyStarkAdminPage() {
               marginBottom: "20px",
             }}
           >
-            <LockIcon size={14} /> RESTRICTED ADMIN ZONE — LEVEL 5
+            <LockIcon size={14} /> CLERK OAUTH ADMIN GATEWAY — LEVEL 5
           </div>
 
           <h2 style={{ margin: "0 0 8px 0", fontSize: "22px", fontWeight: 800, color: "#ffffff" }}>
             STARK SECURITY GATEWAY
           </h2>
           <p style={{ margin: "0 0 24px 0", fontSize: "13.5px", color: "#94a3b8", lineHeight: "1.5" }}>
-            High security restricted area. Only authorized personnel with Level 5 clearance may enter.
+            Restricted Admin Control Center. Access requires authorized Clerk OAuth login for <strong>ultimation.teams@gmail.com</strong>.
           </p>
 
-          <form onSubmit={handleAuthenticate} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div>
-              <input
-                type="password"
-                required
-                placeholder="Enter Admin Security Passkey..."
-                value={passkeyInput}
-                onChange={(e) => setPasskeyInput(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "12px 16px",
-                  borderRadius: "10px",
-                  border: "1px solid #334155",
-                  background: "#0f172a",
-                  color: "#ffffff",
-                  fontSize: "14px",
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
+          {!isClerkLoaded ? (
+            <div style={{ color: "#94a3b8", fontSize: "14px", padding: "20px" }}>Verifying security clearance...</div>
+          ) : !isSignedIn ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px", alignItems: "center" }}>
+              <SignIn
+                routing="hash"
+                forceRedirectUrl="/tony-stark-2501"
+                fallbackRedirectUrl="/tony-stark-2501"
+                signUpUrl="/tony-stark-2501"
               />
             </div>
-
-            {authError && (
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
               <div
                 style={{
                   background: "rgba(239, 68, 68, 0.15)",
                   color: "#ef4444",
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  fontWeight: 700,
+                  padding: "12px 16px",
+                  borderRadius: "12px",
+                  fontSize: "13px",
                   border: "1px solid rgba(239, 68, 68, 0.3)",
+                  textAlign: "center",
+                  lineHeight: "1.4",
                 }}
               >
-                {authError}
+                <AlertTriangleIcon size={16} /> {authError || `Account (${clerkUser?.primaryEmailAddress?.emailAddress}) is not authorized for Admin access.`}
               </div>
-            )}
-
-            <button
-              type="submit"
-              style={{
-                width: "100%",
-                padding: "12px",
-                borderRadius: "10px",
-                border: "none",
-                background: "#10b981",
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: "14px",
-                cursor: "pointer",
-              }}
-            >
-              Verify Security Clearance
-            </button>
-          </form>
+              <SignOutButton redirectUrl="/tony-stark-2501">
+                <button
+                  type="button"
+                  style={{
+                    background: "#334155",
+                    color: "#ffffff",
+                    padding: "10px 20px",
+                    borderRadius: "100px",
+                    border: "none",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontSize: "13px",
+                  }}
+                >
+                  Sign Out & Switch Account
+                </button>
+              </SignOutButton>
+            </div>
+          )}
 
           <div style={{ marginTop: "24px", borderTop: "1px solid #1e293b", paddingTop: "16px" }}>
             <Link
               href="/"
               style={{
-                color: "#94a3b8",
+                color: "#64748b",
                 fontSize: "13px",
                 textDecoration: "none",
                 fontWeight: 600,
               }}
             >
-              ← Return to Live Startup Map
+              ← Return to Main Ecosystem Map
             </Link>
           </div>
         </div>
@@ -682,24 +713,23 @@ export default function TonyStarkAdminPage() {
             ← Live Map
           </Link>
 
-          <button
-            type="button"
-            onClick={handleSignOutAdmin}
-            style={{
-              padding: "8px 14px",
-              borderRadius: "8px",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              background: "#fee2e2",
-              color: "#dc2626",
-              fontWeight: 700,
-              fontSize: "12px",
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <LockIcon size={13} /> Lock Platform
-            </span>
-          </button>
+          <SignOutButton redirectUrl="/tony-stark-2501">
+            <button
+              type="button"
+              style={{
+                padding: "8px 14px",
+                borderRadius: "8px",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                background: "#fee2e2",
+                color: "#dc2626",
+                fontWeight: 700,
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              Sign Out ({clerkUser?.firstName || "Admin"})
+            </button>
+          </SignOutButton>
         </div>
       </header>
 
@@ -853,6 +883,27 @@ export default function TonyStarkAdminPage() {
             }}
           >
             <FileTextIcon size={16} /> Legal Documents
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("access")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "12px 16px",
+              borderRadius: "10px",
+              border: "none",
+              background: activeSection === "access" ? "#111827" : "transparent",
+              color: activeSection === "access" ? "#ffffff" : "#4b5563",
+              fontWeight: 600,
+              fontSize: "14px",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <LockIcon size={16} /> Access Management
           </button>
         </aside>
 
@@ -1589,6 +1640,154 @@ export default function TonyStarkAdminPage() {
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ACCESS MANAGEMENT SECTION */}
+          {activeSection === "access" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <h2 style={{ fontSize: "24px", fontWeight: 800, margin: 0, color: "#111827" }}>
+                    Access Management & Security Clearance
+                  </h2>
+                  <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: "14px" }}>
+                    Strict Single-User Access Control Matrix powered by Clerk OAuth SSO
+                  </p>
+                </div>
+
+                <span
+                  style={{
+                    background: "rgba(16, 185, 129, 0.15)",
+                    color: "#059669",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    padding: "6px 14px",
+                    borderRadius: "100px",
+                    fontSize: "12px",
+                    fontWeight: 800,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <LockIcon size={14} /> SECURITY PROTOCOL ENFORCED
+                </span>
+              </div>
+
+              {/* SECURITY SUMMARY CARD */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#111827" }}>
+                  Active Master Admin Authorization Profile
+                </h3>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "16px",
+                  }}
+                >
+                  <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      STRICT AUTHORIZED EMAIL
+                    </div>
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: "#10b981", marginTop: "4px" }}>
+                      ultimation.teams@gmail.com
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      ACTIVE LOGGED-IN EMAIL
+                    </div>
+                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginTop: "4px" }}>
+                      {clerkUser?.primaryEmailAddress?.emailAddress || "Not Authenticated"}
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      CLERK USER ID
+                    </div>
+                    <div style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 600, color: "#334155", marginTop: "6px" }}>
+                      {clerkUser?.id || "N/A"}
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                      CLEARANCE STATUS
+                    </div>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <CheckIcon size={14} /> LEVEL 5 MASTER ADMIN
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECURITY POLICIES LIST */}
+              <div
+                style={{
+                  background: "#ffffff",
+                  borderRadius: "16px",
+                  padding: "24px",
+                  border: "1px solid rgba(0,0,0,0.06)",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+                }}
+              >
+                <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 800, color: "#111827" }}>
+                  Security Policies & Access Constraints
+                </h3>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
+                    <span style={{ color: "#10b981", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
+                      <CheckIcon size={18} />
+                    </span>
+                    <div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>Strict Single-User Access Lock</div>
+                      <div style={{ fontSize: "12.5px", color: "#6b7280", marginTop: "2px" }}>
+                        Only accounts authenticated via Clerk OAuth with email address <code>ultimation.teams@gmail.com</code> are granted Level 5 access to platform endpoints and database actions.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
+                    <span style={{ color: "#10b981", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
+                      <CheckIcon size={18} />
+                    </span>
+                    <div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>Middleware Session Interception</div>
+                      <div style={{ fontSize: "12.5px", color: "#6b7280", marginTop: "2px" }}>
+                        Clerk middleware (<code>src/middleware.ts</code>) enforces session validation on all incoming server routes and API endpoints.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
+                    <span style={{ color: "#10b981", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
+                      <CheckIcon size={18} />
+                    </span>
+                    <div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>Multi-Source Verification Layer</div>
+                      <div style={{ fontSize: "12.5px", color: "#6b7280", marginTop: "2px" }}>
+                        Server security clearance evaluates JWT session claims, Clerk SDK user records, and Cloudflare D1 profiles to ensure uninterrupted admin access.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </main>

@@ -142,9 +142,17 @@ export async function createPresignedUploadUrl({
   });
 
   const uploadUrl = await getSignedUrl(getR2Client(), command, { expiresIn: 600 });
-  const publicUrl = R2_PUBLIC_DOMAIN ? `${R2_PUBLIC_DOMAIN}/${fileKey}` : fileKey;
+  const publicUrl = formatR2PublicUrl(fileKey);
 
   return { uploadUrl, fileKey, publicUrl };
+}
+
+export function formatR2PublicUrl(fileKey: string): string {
+  const domain = R2_PUBLIC_DOMAIN?.trim().replace(/\/+$/, "");
+  if (domain && domain.startsWith("http")) {
+    return `${domain}/${fileKey}`;
+  }
+  return `/api/media?key=${encodeURIComponent(fileKey)}`;
 }
 
 /**
@@ -174,9 +182,7 @@ export async function uploadR2Buffer({
 
   await getR2Client().send(command);
 
-  const publicUrl = R2_PUBLIC_DOMAIN && !R2_PUBLIC_DOMAIN.includes("media.thestartupmap.com")
-    ? `${R2_PUBLIC_DOMAIN}/${fileKey}`
-    : `/api/media?key=${encodeURIComponent(fileKey)}`;
+  const publicUrl = formatR2PublicUrl(fileKey);
 
   return { fileKey, publicUrl };
 }

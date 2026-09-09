@@ -1,6 +1,9 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { fetchActiveSpotlights, createSpotlight } from "@/lib/db";
+import { fetchActiveSpotlights, createSpotlight, fetchListingById } from "@/lib/db";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,7 +12,7 @@ export async function GET(req: NextRequest) {
       { spotlights },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+          "Cache-Control": "no-store, max-age=0",
         },
       }
     );
@@ -31,6 +34,18 @@ export async function POST(req: NextRequest) {
 
     if (!name || !tagline || !type || !color || !initials || !city) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    if (listing_id) {
+      const listing = await fetchListingById(listing_id);
+      if (!listing) {
+        return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+      }
+      const isOwner = listing.owner_id === userId;
+      const isAdmin = await isAuthorizedAdmin(req);
+      if (!isOwner && !isAdmin) {
+        return NextResponse.json({ error: "Forbidden: Not listing owner or admin" }, { status: 403 });
+      }
     }
 
     const spotlight = await createSpotlight({

@@ -113,11 +113,8 @@ export function AddListingForm({
     setSelectedFile(file);
     setError(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setLogoUrl(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setLogoUrl(previewUrl);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -153,7 +150,7 @@ export function AddListingForm({
     }
 
     setLoading(true);
-    let finalR2LogoUrl = logoUrl;
+    let finalR2LogoUrl = logoUrl.startsWith("blob:") ? "" : logoUrl;
 
     if (selectedFile) {
       setIsUploading(true);
@@ -169,7 +166,7 @@ export function AddListingForm({
 
         if (uploadRes.ok) {
           const uploadData = await uploadRes.json();
-          finalR2LogoUrl = uploadData.url || logoUrl;
+          finalR2LogoUrl = uploadData.url || finalR2LogoUrl;
         }
       } catch (err) {
         console.warn("R2 upload error during profile submission:", err);

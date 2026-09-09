@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { fetchLegalDocument, upsertLegalDocument, isAdminUser } from "@/lib/db";
+import { fetchLegalDocument, upsertLegalDocument } from "@/lib/db";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,20 +19,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    const passkey = req.headers.get("x-admin-passkey");
-    const validPasskeys = [
-      process.env.ADMIN_PASSKEY,
-      "2501",
-      "TONYSTARK2501",
-      "STARK2501",
-    ]
-      .filter(Boolean)
-      .map((p) => p?.trim().toUpperCase());
-
-    const isPasskeyAdmin = Boolean(passkey && validPasskeys.includes(passkey.trim().toUpperCase()));
-
-    if (!isPasskeyAdmin && (!userId || !(await isAdminUser(userId)))) {
+    if (!(await isAuthorizedAdmin(req))) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 

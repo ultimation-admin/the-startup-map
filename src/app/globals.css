@@ -277,11 +277,8 @@ html, body {
   justify-content: space-between;
   height: 68px;
   padding: 0 20px;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: #ffffff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  border-top: 1px solid rgba(255, 255, 255, 0.8);
   flex-shrink: 0;
 }
 
@@ -865,9 +862,7 @@ html, body {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(242, 242, 247, 0.88);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  background: #ffffff;
   padding: 0 16px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   margin-top: 0;
@@ -4592,11 +4587,9 @@ html, body {
   /* TOP BAR ON MOBILE */
   .top-bar {
     height: 56px;
-    padding: 0 14px;
-    gap: 8px;
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    padding: 0 12px;
+    gap: 6px;
+    background: #ffffff;
     z-index: 40;
     flex-shrink: 0;
     display: flex;
@@ -4606,15 +4599,17 @@ html, body {
   }
 
   .brand-group {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    gap: 6px;
   }
 
   .brand-the, .brand-map {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .brand-startup {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .header-actions {
@@ -4627,28 +4622,72 @@ html, body {
     height: 28px;
   }
 
-  /* SPOTLIGHTS BAR ON MOBILE (RESTORED ORIGINAL SIZES) */
+  /* MOBILE MAP PIN PICKER FLOATING INSTRUCTION BANNER */
+  .mobile-map-pick-banner {
+    position: absolute;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #ffffff;
+    padding: 7px 14px;
+    border-radius: 9999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .confirm-pin-btn {
+    background: #10b981;
+    color: #ffffff;
+    border: none;
+    padding: 4px 11px;
+    border-radius: 9999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 140ms ease, background-color 140ms ease;
+  }
+
+  .confirm-pin-btn:hover {
+    background: #059669;
+    transform: scale(1.03);
+  }
+
+  /* SPOTLIGHTS BAR ON MOBILE (52px OPTIMIZED SIZE) */
   .spotlights-wrapper {
-    padding: 8px 14px;
-    background: rgba(255, 255, 255, 0.85);
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-    z-index: 35;
+    z-index: 40;
     flex-shrink: 0;
   }
 
   .spotlights-header {
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
 
   .spotlights-heading {
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 700;
   }
 
   .spotlights-grid {
     display: flex;
     overflow-x: auto;
-    gap: 12px;
-    padding-bottom: 4px;
+    gap: 10px;
+    padding-bottom: 2px;
+    scroll-snap-type: x mandatory;
     scrollbar-width: none;
   }
 
@@ -4657,30 +4696,58 @@ html, body {
   }
 
   .story-circle-btn {
-    width: 56px;
+    width: 52px;
     flex-shrink: 0;
+    scroll-snap-align: start;
   }
 
   .story-ring-wrap {
-    width: 56px;
-    height: 56px;
+    width: 52px;
+    height: 52px;
+    padding: 2px;
+    border-radius: 50%;
+  }
+
+  .story-avatar-img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .story-avatar-initials {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
   }
 
   .story-name-label {
-    font-size: 11px;
+    font-size: 10.5px;
+    font-weight: 600;
+    max-width: 52px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 3px;
   }
 
-  /* MAP PANEL ON MOBILE */
+  /* MAP PANEL ON MOBILE (Positioned cleanly under TopBar + Spotlights) */
   .map-panel {
     display: block;
     position: absolute;
-    top: 142px;
+    top: 138px;
     bottom: 0;
     left: 0;
     right: 0;
     width: 100%;
-    height: calc(100vh - 142px);
-    height: calc(100dvh - 142px);
+    height: calc(100vh - 138px);
+    height: calc(100dvh - 138px);
     margin: 0;
     border-radius: 0;
     z-index: 10;
@@ -4697,48 +4764,60 @@ html, body {
     z-index: 35;
   }
 
-  /* MOBILE BACKDROP OVERLAY (HIDDEN SO MAP IS ALWAYS CLEAR & BRIGHT) */
+  /* MOBILE BACKDROP OVERLAY */
   .mobile-sheet-backdrop {
     display: none;
   }
 
   /* AIRBNB STYLE TOUCH DRAGGABLE BOTTOM SHEET FOR HERO / FEED PANEL */
   .mobile-bottom-sheet {
-    position: absolute;
+    position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     width: 100%;
-    height: calc(100vh - 310px);
-    height: calc(100dvh - 310px);
-    max-height: calc(100vh - 310px);
+    height: calc(100vh - 138px);
+    height: calc(100dvh - 138px);
+    max-height: calc(100vh - 138px);
+    max-height: calc(100dvh - 138px);
     z-index: 30;
-    background: #ffffff;
+    background: #f2f2f7;
     border-top-left-radius: 24px;
     border-top-right-radius: 24px;
     box-shadow: 0 -12px 48px rgba(15, 23, 42, 0.2);
     transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
     flex-direction: column;
-    transform: translateY(calc(100% - 56px));
+    transform: translateY(calc(100dvh - 138px - 70dvh));
     will-change: transform;
   }
 
-  .mobile-bottom-sheet.drawer-expanded,
-  .drawer-open .mobile-bottom-sheet {
+  /* Max Expansion: Up to border of Spotlights section (top: 138px) */
+  .mobile-bottom-sheet.drawer-max {
     transform: translateY(0);
   }
 
-  /* PURE MINIMALIST AIRBNB DRAG HANDLE BAR (NO TEXT) */
+  /* Default State: 70% of screen height */
+  .mobile-bottom-sheet.drawer-default {
+    transform: translateY(calc(100dvh - 138px - 70dvh));
+  }
+
+  /* Collapsed / Closing State: 25% of screen height */
+  .mobile-bottom-sheet.drawer-collapsed {
+    transform: translateY(calc(100dvh - 138px - 25dvh));
+  }
+
+  /* PURE MINIMALIST AIRBNB DRAG HANDLE BAR (TOUCH TARGET ACCESSIBILITY >= 40px) */
   .mobile-drawer-handle-bar {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 32px;
-    padding: 12px 0 8px;
-    background: #ffffff;
+    height: 40px;
+    padding: 14px 0 10px;
+    background: #f2f2f7;
     border-top-left-radius: 24px;
     border-top-right-radius: 24px;
+    border: none;
     cursor: grab;
     user-select: none;
     touch-action: pan-y;
@@ -4751,27 +4830,34 @@ html, body {
   }
 
   .drawer-pill-indicator {
-    width: 36px;
-    height: 4.5px;
+    width: 40px;
+    height: 5px;
     border-radius: 9999px;
-    background: rgba(15, 23, 42, 0.22);
+    background: rgba(15, 23, 42, 0.28);
     transition: background-color 160ms ease, transform 160ms ease;
   }
 
   .mobile-drawer-handle-bar:active .drawer-pill-indicator {
     background: #10b981;
-    transform: scaleX(1.15);
+    transform: scaleX(1.2);
   }
 
-  /* MAP CONTROLS OVERLAY ON MOBILE */
+  .feed-top-section-fixed {
+    background: #f2f2f7;
+  }
+
+  /* MAP CONTROLS OVERLAY ON MOBILE (ULTRA-CLEAN REDESIGN) */
   .map-top-left-controls {
-    top: 10px;
-    left: 10px;
-    gap: 6px;
-    max-width: calc(100% - 20px);
+    top: 8px;
+    left: 8px;
+    gap: 8px;
+    max-width: calc(100% - 16px);
     overflow-x: auto;
+    scroll-snap-type: x mandatory;
     scrollbar-width: none;
-    padding-bottom: 4px;
+    padding: 2px 2px 6px;
+    z-index: 25;
+    touch-action: pan-x;
   }
 
   .map-top-left-controls::-webkit-scrollbar {
@@ -4779,26 +4865,42 @@ html, body {
   }
 
   .circle-search-btn {
-    width: 32px;
-    height: 32px;
+    width: 34px;
+    height: 34px;
     flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   }
 
   .circular-search-container {
-    height: 32px;
+    height: 34px;
+    scroll-snap-align: start;
   }
 
   .circular-search-input {
-    width: 120px;
+    width: 130px;
     font-size: 11.5px;
   }
 
   .city-pill-btn,
   .filter-dropdown-btn {
-    padding: 5px 12px;
-    font-size: 11px;
+    height: 34px;
+    padding: 0 13px;
+    font-size: 11.5px;
+    font-weight: 700;
     white-space: nowrap;
     flex-shrink: 0;
+    scroll-snap-align: start;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(15, 23, 42, 0.1) !important;
+    border-radius: 9999px !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    color: #0f172a;
   }
 
   .story-viewer-card {

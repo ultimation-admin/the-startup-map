@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { d1Execute, d1QueryFirst } from "@/lib/d1";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function PATCH(
   req: NextRequest,
@@ -29,8 +30,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    if (post.user_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden: Not the post owner" }, { status: 403 });
+    const isOwner = post.user_id === user.id;
+    const isAdmin = await isAuthorizedAdmin(req);
+    if (!isOwner && !isAdmin) {
+      return NextResponse.json({ error: "Forbidden: Not the post owner or admin" }, { status: 403 });
     }
 
     await d1Execute("UPDATE community_posts SET content = ? WHERE id = ?", [content.trim(), id]);
@@ -62,8 +65,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    if (post.user_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden: Not the post owner" }, { status: 403 });
+    const isOwner = post.user_id === user.id;
+    const isAdmin = await isAuthorizedAdmin(req);
+    if (!isOwner && !isAdmin) {
+      return NextResponse.json({ error: "Forbidden: Not the post owner or admin" }, { status: 403 });
     }
 
     await d1Execute("DELETE FROM community_posts WHERE id = ?", [id]);

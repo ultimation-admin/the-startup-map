@@ -76,9 +76,27 @@ function ClerkUserSubscriber({
   onAuthChange: (auth: { user: any; isSignedIn: boolean; isLoaded: boolean }) => void;
 }) {
   const { user, isSignedIn, isLoaded } = useUser();
+  const prevRef = useRef<{ userId: string; isSignedIn: boolean; isLoaded: boolean }>({
+    userId: "",
+    isSignedIn: false,
+    isLoaded: false,
+  });
+
   useEffect(() => {
-    onAuthChange({ user: user || null, isSignedIn: !!isSignedIn, isLoaded: !!isLoaded });
+    const currentUserId = user?.id || "";
+    const currentIsSignedIn = !!isSignedIn;
+    const currentIsLoaded = !!isLoaded;
+
+    if (
+      currentUserId !== prevRef.current.userId ||
+      currentIsSignedIn !== prevRef.current.isSignedIn ||
+      currentIsLoaded !== prevRef.current.isLoaded
+    ) {
+      prevRef.current = { userId: currentUserId, isSignedIn: currentIsSignedIn, isLoaded: currentIsLoaded };
+      onAuthChange({ user: user || null, isSignedIn: currentIsSignedIn, isLoaded: currentIsLoaded });
+    }
   }, [user, isSignedIn, isLoaded, onAuthChange]);
+
   return null;
 }
 
@@ -134,8 +152,8 @@ export default function Home() {
   const [userInterests, setUserInterests] = useState<string[]>([]);
   const [userJoinedCommunities, setUserJoinedCommunities] = useState<string[]>([]);
 
-  // Airbnb-style touch-draggable bottom sheet state with smooth velocity tracking
-  const [isMobileDrawerExpanded, setIsMobileDrawerExpanded] = useState(false);
+  // 3-State touch-draggable bottom sheet ("collapsed" | "default" | "max")
+  const [mobileDrawerState, setMobileDrawerState] = useState<"collapsed" | "default" | "max">("default");
   const [dragOffsetY, setDragOffsetY] = useState<number | null>(null);
 
   useEffect(() => {
@@ -145,15 +163,27 @@ export default function Home() {
       }, 330);
       return () => clearTimeout(timer);
     }
-  }, [isMobileDrawerExpanded, map]);
-  const touchStartRef = useRef<{ startY: number; startTime: number; initialExpanded: boolean } | null>(null);
+  }, [mobileDrawerState, map]);
+
+  const touchStartRef = useRef<{ startY: number; startTime: number; initialState: "collapsed" | "default" | "max" } | null>(null);
   const touchLastRef = useRef<{ lastY: number; lastTime: number; velocityY: number }>({ lastY: 0, lastTime: 0, velocityY: 0 });
   const rafIdRef = useRef<number | null>(null);
 
   const handleDrawerTouchStart = (e: React.TouchEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
+    const targetEl = e.target as HTMLElement;
+    const isHandle = !!targetEl.closest(".mobile-drawer-handle-bar");
+
+    // Prevent sheet drag initiation if scrolling content inside controls-scroll unless touch starts on handle bar or scrollTop is 0
+    if (!isHandle) {
+      const scrollEl = targetEl.closest(".controls-scroll") as HTMLElement;
+      if (scrollEl && scrollEl.scrollTop > 0) {
+        return;
+      }
+    }
+
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
     const now = Date.now();
-    touchStartRef.current = { startY: clientY, startTime: now, initialExpanded: isMobileDrawerExpanded };
+    touchStartRef.current = { startY: clientY, startTime: now, initialState: mobileDrawerState };
     touchLastRef.current = { lastY: clientY, lastTime: now, velocityY: 0 };
     setDragOffsetY(0);
   };
@@ -161,14 +191,21 @@ export default function Home() {
   const handleDrawerTouchMove = (e: React.TouchEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
     if (!touchStartRef.current) return;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    const now = Date.now();
+    const deltaY = clientY - touchStartRef.current.startY;
 
+    const targetEl = e.target as HTMLElement;
+    const isHandle = !!targetEl.closest(".mobile-drawer-handle-bar");
+    if (!isHandle && deltaY < 0 && mobileDrawerState === "max") {
+      // User is scrolling content upwards in max state, let native scroll handle it
+      return;
+    }
+
+    const now = Date.now();
     const dt = Math.max(1, now - touchLastRef.current.lastTime);
     const dy = clientY - touchLastRef.current.lastY;
     const velocityY = dy / dt; // px / ms
 
     touchLastRef.current = { lastY: clientY, lastTime: now, velocityY };
-    const deltaY = clientY - touchStartRef.current.startY;
 
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     rafIdRef.current = requestAnimationFrame(() => {
@@ -185,19 +222,21 @@ export default function Home() {
     }
 
     const deltaY = dragOffsetY;
-    const { initialExpanded } = touchStartRef.current;
+    const { initialState } = touchStartRef.current;
     const { velocityY } = touchLastRef.current;
 
-    // Fast flick or drag threshold decision
     if (Math.abs(deltaY) < 8) {
-      // Simple tap toggles sheet
-      setIsMobileDrawerExpanded(!initialExpanded);
-    } else if (velocityY < -0.25 || deltaY < -35) {
-      // Swiped up or dragged up -> Expand
-      setIsMobileDrawerExpanded(true);
-    } else if (velocityY > 0.25 || deltaY > 35) {
-      // Swiped down or dragged down -> Collapse
-      setIsMobileDrawerExpanded(false);
+      if (initialState === "collapsed") setMobileDrawerState("default");
+      else if (initialState === "default") setMobileDrawerState("max");
+      else setMobileDrawerState("default");
+    } else if (velocityY < -0.2 || deltaY < -30) {
+      if (initialState === "collapsed") setMobileDrawerState("default");
+      else if (initialState === "default") setMobileDrawerState("max");
+      else setMobileDrawerState("max");
+    } else if (velocityY > 0.2 || deltaY > 30) {
+      if (initialState === "max") setMobileDrawerState("default");
+      else if (initialState === "default") setMobileDrawerState("collapsed");
+      else setMobileDrawerState("collapsed");
     }
 
     touchStartRef.current = null;
@@ -735,8 +774,10 @@ export default function Home() {
   // All navigation goes through here — no scattered pushState calls.
   const navigateTo = (view: LeftView, profile?: Listing | null) => {
     const search = typeof window !== "undefined" ? window.location.search : "";
-    if (view === "studio" || view === "add-listing" || view === "profile" || view === "sign-in" || view === "sign-up") {
-      setIsMobileDrawerExpanded(true);
+    if (view === "add-listing") {
+      setMobileDrawerState("collapsed");
+    } else if (view === "studio" || view === "profile" || view === "sign-in" || view === "sign-up" || view === "feed" || view === "spotlight-story") {
+      setMobileDrawerState("default");
     }
     if (view === "studio" && profile) {
       setActiveProfileForStudio(profile);
@@ -795,7 +836,7 @@ export default function Home() {
           setActiveProfileForStudio(match);
           setSelected(match);
           setLeftView("studio");
-          setIsMobileDrawerExpanded(true);
+          setMobileDrawerState("default");
           map?.flyTo({
             center: [match.longitude, match.latitude],
             zoom: 13.5,
@@ -817,7 +858,7 @@ export default function Home() {
   // URL only changes when user opens the full profile studio.
   const handleSelectListing = (item: Listing) => {
     setSelected(item);
-    setIsMobileDrawerExpanded(true);
+    setMobileDrawerState("default");
     if (selectedCardRef.current) {
       selectedCardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -924,7 +965,7 @@ export default function Home() {
   }, [listings, selectedType, selectedStage, selectedSector, selectedRole, selectedVcType, selectedVcStage, selectedCity, query]);
 
   return (
-    <main className={`canvas ${isMobileDrawerExpanded ? "drawer-open" : "drawer-closed"}`}>
+    <main className={`canvas drawer-${mobileDrawerState}`}>
       {isMounted && <ClerkUserSubscriber onAuthChange={handleAuthChange} />}
       {/* LEFT: Controls */}
       <aside className="controls">
@@ -990,22 +1031,25 @@ export default function Home() {
         )}
 
         {/* MOBILE DIMMER BACKDROP OVERLAY */}
-        {isMobileDrawerExpanded && (
+        {mobileDrawerState !== "collapsed" && (
           <div
             className="mobile-sheet-backdrop"
-            onClick={() => setIsMobileDrawerExpanded(false)}
+            onClick={() => setMobileDrawerState("collapsed")}
           />
         )}
 
         {/* AIRBNB STYLE TOUCH DRAGGABLE BOTTOM SHEET (MOBILE ONLY CONTAINER) */}
         <div
-          className={`mobile-bottom-sheet ${isMobileDrawerExpanded ? "drawer-expanded" : "drawer-collapsed"}`}
+          className={`mobile-bottom-sheet drawer-${mobileDrawerState}`}
           style={
             dragOffsetY !== null && touchStartRef.current
               ? {
-                  transform: touchStartRef.current.initialExpanded
-                    ? `translateY(${Math.max(0, dragOffsetY)}px)`
-                    : `translateY(calc(100% - 56px + ${dragOffsetY}px))`,
+                  transform:
+                    touchStartRef.current.initialState === "max"
+                      ? `translateY(${Math.max(0, dragOffsetY)}px)`
+                      : touchStartRef.current.initialState === "default"
+                      ? `translateY(calc(100dvh - 138px - 70dvh + ${dragOffsetY}px))`
+                      : `translateY(calc(100dvh - 138px - 25dvh + ${dragOffsetY}px))`,
                   transition: "none",
                 }
               : undefined
@@ -1139,6 +1183,20 @@ export default function Home() {
 
       {/* RIGHT: Map fills the panel */}
       <div className="map-panel">
+        {/* MOBILE MAP PIN PICKER FLOATING INSTRUCTION BANNER */}
+        {leftView === "add-listing" && (
+          <div className="mobile-map-pick-banner">
+            <span>{pickedCoords ? "📍 Location pin set!" : "📍 Tap anywhere on map to set pin location"}</span>
+            <button
+              type="button"
+              className="confirm-pin-btn"
+              onClick={() => setMobileDrawerState("default")}
+            >
+              {pickedCoords ? "Confirm Location ✓" : "Open Form ↑"}
+            </button>
+          </div>
+        )}
+
         {/* TOP LEFT FILTERS OVERLAY */}
         <div className="map-top-left-controls">
           {/* 1. CIRCULAR SEARCH BUTTON (FIRST) */}

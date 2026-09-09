@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { fetchAllListingsAdmin, updateListingReviewState, createModerationLog, isAdminUser } from "@/lib/db";
+import { fetchAllListingsAdmin, updateListingReviewState, createModerationLog } from "@/lib/db";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId || !(await isAdminUser(userId))) {
+    if (!(await isAuthorizedAdmin(req))) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
@@ -19,8 +18,7 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId || !(await isAdminUser(userId))) {
+    if (!(await isAuthorizedAdmin(req))) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
@@ -34,7 +32,7 @@ export async function PATCH(req: NextRequest) {
     await updateListingReviewState(id, state);
     await createModerationLog({
       listing_id: id,
-      moderator_id: moderator_id || userId,
+      moderator_id: moderator_id || "admin_session",
       previous_state: previous_state || "pending",
       new_state: state,
       reason: reason || `Status changed to ${state}`,

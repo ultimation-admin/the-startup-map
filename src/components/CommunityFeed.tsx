@@ -160,11 +160,8 @@ export function CommunityFeed({
     }
 
     setSelectedImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreviewUrl(previewUrl);
   };
 
   const handleRemoveImage = () => {

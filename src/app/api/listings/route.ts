@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { fetchListings, fetchUserListings, createListing, upsertUserProfile, isAdminUser } from "@/lib/db";
@@ -26,7 +28,12 @@ export async function GET(req: NextRequest) {
       listings = listings.filter((l) => l.stage?.toLowerCase() === stage.toLowerCase());
     }
 
-    const { userId } = await auth();
+    let userId: string | null = null;
+    try {
+      const authObj = await auth();
+      userId = authObj.userId;
+    } catch {}
+
     const isAdmin = userId ? await isAdminUser(userId) : false;
 
     const sanitizedListings = listings.map((l) => {

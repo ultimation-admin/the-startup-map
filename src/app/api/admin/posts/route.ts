@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { d1Query, d1Execute } from "@/lib/d1";
-import { isAdminUser } from "@/lib/db";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId || !(await isAdminUser(userId))) {
+    if (!(await isAuthorizedAdmin(req))) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
@@ -20,8 +18,7 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId || !(await isAdminUser(userId))) {
+    if (!(await isAuthorizedAdmin(req))) {
       return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 

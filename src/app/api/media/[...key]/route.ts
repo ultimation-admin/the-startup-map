@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getR2Object } from "@/lib/r2";
 
@@ -14,8 +16,8 @@ export async function GET(
 
     const finalKey = (searchKey || keyPath).replace(/^\/+/, "");
 
-    if (!finalKey) {
-      return NextResponse.json({ error: "Missing key parameter" }, { status: 400 });
+    if (!finalKey || finalKey.includes("..") || finalKey.startsWith(".")) {
+      return NextResponse.json({ error: "Invalid key parameter" }, { status: 400 });
     }
 
     const object = await getR2Object(finalKey);

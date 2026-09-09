@@ -99,11 +99,8 @@ export function DedicatedProfileStudio({
         return;
       }
       setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setLogoUrl(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      const previewUrl = URL.createObjectURL(file);
+      setLogoUrl(previewUrl);
     }
   };
 

@@ -1,4 +1,4 @@
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getR2Object } from "@/lib/r2";
@@ -14,6 +14,10 @@ export async function GET(req: NextRequest) {
 
     // Clean leading slashes
     key = decodeURIComponent(key).replace(/^\/+/, "");
+
+    if (key.includes("..") || key.startsWith(".")) {
+      return NextResponse.json({ error: "Invalid key parameter" }, { status: 400 });
+    }
 
     const object = await getR2Object(key);
 

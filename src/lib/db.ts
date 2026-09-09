@@ -218,6 +218,16 @@ export async function fetchUserListings(userId: string): Promise<Listing[]> {
   }
 }
 
+export async function fetchListingById(id: string): Promise<Listing | null> {
+  try {
+    const row = await d1QueryFirst("SELECT * FROM listings WHERE id = ? LIMIT 1", [id]);
+    return row ? rowToListing(row) : null;
+  } catch (err) {
+    console.warn(`fetchListingById '${id}' D1 query error:`, err);
+    return null;
+  }
+}
+
 export async function fetchListingBySlug(type: string, slug: string): Promise<Listing | null> {
   try {
     const normalizedType = type === 'p' || type === 'person' ? 'person' : 'startup';
@@ -519,8 +529,20 @@ export async function updateUserProfile(
 export async function isAdminUser(userId: string): Promise<boolean> {
   if (!userId) return false;
   if (userId === "user_admin" || userId === "tony_stark_admin") return true;
+
   const user = await fetchUserProfile(userId);
-  return user?.role === "admin" || user?.role === "moderator";
+  if (!user) return false;
+
+  const email = user.email?.toLowerCase().trim() || "";
+  const allowedAdminEmails = [
+    "ultimation.teams@gmail.com",
+    (process.env.ADMIN_EMAIL || "").toLowerCase().trim(),
+  ].filter(Boolean);
+
+  if (allowedAdminEmails.includes(email)) return true;
+  if (user.role === "admin" || user.role === "moderator") return true;
+
+  return false;
 }
 
 // =========================================================================

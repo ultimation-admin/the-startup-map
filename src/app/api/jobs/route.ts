@@ -1,6 +1,9 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { fetchJobs, createJob } from "@/lib/db";
+import { fetchJobs, createJob, fetchListingById } from "@/lib/db";
+import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -36,6 +39,17 @@ export async function POST(req: NextRequest) {
 
     if (!listing_id || !title || !location || !employment_type || !application_url) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const listing = await fetchListingById(listing_id);
+    if (!listing) {
+      return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    }
+
+    const isOwner = listing.owner_id === user.id;
+    const isAdmin = await isAuthorizedAdmin(req);
+    if (!isOwner && !isAdmin) {
+      return NextResponse.json({ error: "Forbidden: Not listing owner or admin" }, { status: 403 });
     }
 
     const job = await createJob({
