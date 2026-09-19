@@ -768,6 +768,7 @@ export function CommunityFeed({
                   {/* TWEET HEADER */}
                   <div className="tweet-header">
                     <div className="tweet-meta">
+                      <span className="tweet-community-pill">{post.community_name}</span>
                       {(() => {
                         const authorHandle = (
                           post.user_name.startsWith("p/") || post.user_name.startsWith("s/")
@@ -784,7 +785,6 @@ export function CommunityFeed({
                           </button>
                         );
                       })()}
-                      <span className="tweet-community-pill">{post.community_name}</span>
                     </div>
                   </div>
 

@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       profile,
+      hasProfile: userListings.length > 0,
+      listing: userListings[0] || null,
       listings: userListings,
     });
   } catch (error: unknown) {

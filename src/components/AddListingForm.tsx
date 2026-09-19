@@ -129,7 +129,7 @@ export function AddListingForm({
       return setError("Please click anywhere on the map panel on the right to set your exact location pin!");
     }
 
-    // Strict validation enforcing ALL fields required
+    // Strict validation enforcing required fields
     if (tab === "startup") {
       if (!name.trim()) return setError("Company name is required.");
       if (!phone.trim()) return setError("Phone number is required.");
@@ -138,7 +138,6 @@ export function AddListingForm({
       if (!description.trim()) return setError("Short description is required.");
       if (!stage) return setError("Funding stage is required.");
       if (!sector) return setError("Sector is required.");
-      if (!tweetUrl.trim()) return setError("Tweet link is required.");
     } else {
       if (!name.trim()) return setError("Full name is required.");
       if (!phone.trim()) return setError("Phone number is required.");
@@ -146,7 +145,6 @@ export function AddListingForm({
       if (!role) return setError("Role is required.");
       if (!website.trim()) return setError("Portfolio / Website link is required.");
       if (!description.trim()) return setError("Short description is required.");
-      if (!tweetUrl.trim()) return setError("Tweet link is required.");
     }
 
     setLoading(true);
@@ -403,16 +401,15 @@ export function AddListingForm({
 
             <div className="form-group grid-col-full">
               <label htmlFor="tweet-link" className="label-with-subtext">
-                <span>Proof Tweet Link *</span>
-                <span className="label-subtext">(Admin verification)</span>
+                <span>X / Twitter Handle or Link</span>
+                <span className="label-subtext">(Optional)</span>
               </label>
               <input
                 id="tweet-link"
                 type="url"
                 value={tweetUrl}
                 onChange={(e) => setTweetUrl(e.target.value)}
-                placeholder="https://x.com/username/status/123456"
-                required
+                placeholder="https://x.com/username (Optional)"
                 disabled={loading}
               />
             </div>
@@ -504,16 +501,15 @@ export function AddListingForm({
 
             <div className="form-group grid-col-full">
               <label htmlFor="tweet-link-people" className="label-with-subtext">
-                <span>Proof Tweet Link *</span>
-                <span className="label-subtext">(Admin verification)</span>
+                <span>X / Twitter Handle or Link</span>
+                <span className="label-subtext">(Optional)</span>
               </label>
               <input
                 id="tweet-link-people"
                 type="url"
                 value={tweetUrl}
                 onChange={(e) => setTweetUrl(e.target.value)}
-                placeholder="https://x.com/username/status/123456"
-                required
+                placeholder="https://x.com/username (Optional)"
                 disabled={loading}
               />
             </div>
@@ -574,10 +570,10 @@ export function AddListingForm({
                 <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
                 <path d="M12 2a10 10 0 0 1 10 10" />
               </svg>
-              Submitting for Review...
+              Creating Profile...
             </span>
           ) : (
-            "Submit for Review"
+            "Create Profile & Join Map"
           )}
         </button>
       </form>

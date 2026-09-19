@@ -89,6 +89,15 @@ export async function POST(req: NextRequest) {
       avatar_url: user.imageUrl || undefined,
     });
 
+    // Enforce 1 Email = 1 Profile rule: Check if user already has an active profile
+    const existingListings = await fetchUserListings(user.id);
+    if (existingListings && existingListings.length > 0) {
+      return NextResponse.json(
+        { error: "A profile already exists for this email account.", listing: existingListings[0] },
+        { status: 400 }
+      );
+    }
+
     const listing = await createListing(
       {
         name,

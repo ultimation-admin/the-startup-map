@@ -180,11 +180,11 @@ export function ProfileAvatarStack({
 
           <div className="menu-divider" />
 
-          {/* Section 2: PROFILES */}
-          <div className="menu-section-header">YOUR PROFILES ({listings.length})</div>
+          {/* Section 2: SINGLE PROFILE */}
+          <div className="menu-section-header">{listings.length > 0 ? "YOUR PROFILE" : "PROFILE STATUS"}</div>
           {listings.length === 0 ? (
             <div className="menu-empty-state" style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-              <span style={{ fontSize: "12px", color: "#64748b" }}>No profiles created yet.</span>
+              <span style={{ fontSize: "12px", color: "#64748b" }}>No profile created yet.</span>
               <button
                 type="button"
                 className="create-profile-icon-btn"
@@ -200,9 +200,8 @@ export function ProfileAvatarStack({
             </div>
           ) : (
             <div className="menu-profiles-list">
-              {listings.map((profile) => {
-                const isSelected = activeListingId === profile.id;
-                const state = profile.review_state || "pending";
+              {listings.slice(0, 1).map((profile) => {
+                const isSelected = activeListingId === profile.id || true;
 
                 return (
                   <button
@@ -227,7 +226,7 @@ export function ProfileAvatarStack({
                     <div className="menu-item-info">
                       <span className="menu-item-name">{profile.name}</span>
                       <span className="menu-item-meta">
-                        {profile.type === "startup" ? "Startup" : "People Profile"} &bull; {state.toUpperCase()}
+                        {profile.type === "startup" ? "Startup" : "People Profile"} &bull; ACTIVE
                       </span>
                     </div>
 
@@ -237,23 +236,6 @@ export function ProfileAvatarStack({
               })}
             </div>
           )}
-
-          <div className="menu-divider" />
-
-          {/* Section 3: CREATE NEW PROFILE */}
-          <button
-            type="button"
-            className="menu-item-action-create"
-            onClick={() => {
-              onAddNewClick();
-              setIsOpen(false);
-            }}
-          >
-            <span className="create-icon-badge">
-              <PlusIcon size={12} />
-            </span>
-            <span>Create New Profile</span>
-          </button>
         </div>
       )}
 

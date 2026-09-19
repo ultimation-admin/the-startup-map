@@ -3162,9 +3162,9 @@ html, body {
 
 .tweet-meta {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
 }
 
 .tweet-author-name {
@@ -4584,6 +4584,17 @@ html, body {
     background: #f2f2f7;
   }
 
+  /* Prevent iOS Safari input auto-zoom on mobile */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="url"],
+  input[type="search"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
   /* TOP BAR ON MOBILE */
   .top-bar {
     height: 56px;
@@ -4689,6 +4700,7 @@ html, body {
     padding-bottom: 2px;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
 
   .spotlights-grid::-webkit-scrollbar {
@@ -4790,6 +4802,14 @@ html, body {
     flex-direction: column;
     transform: translateY(calc(100dvh - 138px - 70dvh));
     will-change: transform;
+    overflow: hidden;
+  }
+
+  .mobile-bottom-sheet-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   /* Max Expansion: Up to border of Spotlights section (top: 138px) */
@@ -4855,6 +4875,7 @@ html, body {
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
     padding: 2px 2px 6px;
     z-index: 25;
     touch-action: pan-x;
@@ -4862,6 +4883,19 @@ html, body {
 
   .map-top-left-controls::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Prevent mobile dropdown clipping in scrollable map control bar */
+  .dropdown-menu-popover.city-popover,
+  .dropdown-menu-popover.filter-popover {
+    position: fixed !important;
+    top: 184px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+    z-index: 9999 !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22) !important;
   }
 
   .circle-search-btn {
@@ -4919,8 +4953,12 @@ html, body {
     gap: 4px;
   }
 
+  .brand-group {
+    gap: 3px;
+  }
+
   .brand-the, .brand-map, .brand-startup {
-    font-size: 13.5px;
+    font-size: 13px;
   }
 
   .mobile-tab-btn {
@@ -4930,6 +4968,14 @@ html, body {
 
   .header-actions {
     gap: 4px;
+  }
+
+  .create-profile-icon-btn span {
+    display: none;
+  }
+
+  .create-profile-icon-btn {
+    padding: 4px 8px;
   }
 }
 

@@ -273,8 +273,13 @@ export default function Home() {
 
       fetch("/api/profile/sync", { method: "POST" })
         .then((res) => res.json())
-        .then(() => {
-          if (leftView === "sign-in" || leftView === "sign-up") {
+        .then((data) => {
+          if (data && data.hasProfile === false) {
+            // New sign up without profile -> Auto-prompt 1-step profile creation
+            if (leftView === "sign-in" || leftView === "sign-up") {
+              setLeftView("add-listing");
+            }
+          } else if (leftView === "sign-in" || leftView === "sign-up") {
             setLeftView("explore");
           }
         })
@@ -844,6 +849,10 @@ export default function Home() {
             bearing: -10,
           });
         }
+      } else if (parts.length === 1 && (parts[0] === "sign-in" || parts[0] === "sign-up")) {
+        setActiveProfileForStudio(null);
+        setLeftView(parts[0] as LeftView);
+        setMobileDrawerState("default");
       } else {
         setActiveProfileForStudio(null);
         setLeftView("explore");
@@ -886,16 +895,18 @@ export default function Home() {
   };
 
   const handleAddListingSuccess = (newListing: Listing) => {
-    setListings((prev) => [...prev, newListing]);
+    setListings((prev) => [newListing, ...prev.filter((l) => l.id !== newListing.id)]);
     setSelected(newListing);
     // Center map on the newly added listing
     if (map) {
       map.flyTo({
         center: [newListing.longitude, newListing.latitude],
-        zoom: 12,
+        zoom: 13.5,
+        pitch: 60,
         duration: 1000,
       });
     }
+    navigateTo("studio", newListing);
   };
 
   const filtered = useMemo(() => {
@@ -1069,7 +1080,7 @@ export default function Home() {
           </div>
 
           <div
-            className="controls-scroll"
+            className="controls-scroll mobile-bottom-sheet-content"
             style={
               leftView === "spotlight-story"
                 ? { flex: 1, display: "flex", flexDirection: "column", padding: "12px", overflow: "hidden" }

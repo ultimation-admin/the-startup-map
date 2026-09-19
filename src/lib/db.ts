@@ -14,7 +14,7 @@ import { geocodeIndia } from "./integrations";
 // =========================================================================
 
 export type ListingType = "startup" | "vc" | "person";
-export type ReviewState = "draft" | "pending" | "verified" | "rejected";
+export type ReviewState = "draft" | "pending" | "verified" | "approved" | "rejected";
 
 export interface Listing {
   id: string;
@@ -252,6 +252,16 @@ export function getProfileSlugUrl(type: string, slug: string): string {
   return isPerson ? `/p/${slug}` : `/s/${slug}`;
 }
 
+export async function fetchSingleUserProfile(userId: string): Promise<Listing | null> {
+  try {
+    const row = await d1QueryFirst("SELECT * FROM listings WHERE owner_id = ? LIMIT 1", [userId]);
+    return row ? rowToListing(row) : null;
+  } catch (err) {
+    console.warn(`fetchSingleUserProfile '${userId}' D1 query error:`, err);
+    return null;
+  }
+}
+
 export async function createListing(
   listingData: {
     name: string;
@@ -298,7 +308,7 @@ export async function createListing(
 
   await d1Execute(
     `INSERT INTO listings (id, owner_id, type, name, slug, city, latitude, longitude, sector, stage, description, website, logo_url, tweet_url, phone_number, review_state)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')`,
     [
       id,
       ownerId,
@@ -334,7 +344,7 @@ export async function createListing(
     logo_url: listingData.logo_url,
     tweet_url: listingData.tweet_url,
     phone_number: listingData.phone_number,
-    review_state: "pending",
+    review_state: "approved",
     color: getSectorColor(listingData.sector),
     initials: listingData.name
       .split(" ")
