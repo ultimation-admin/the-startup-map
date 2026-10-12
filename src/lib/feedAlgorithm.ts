@@ -15,7 +15,7 @@
 
 import { CommunityPost } from "./db";
 
-export type FeedTabMode = "for-you" | "joined" | "trending";
+export type FeedTabMode = "for-you" | "latest" | "joined" | "trending";
 
 export interface UserFeedContext {
   userId?: string;
@@ -151,6 +151,14 @@ export function rankCommunityFeed(
 ): CommunityPost[] {
   if (posts.length === 0) return [];
   const nowMs = Date.now();
+
+  if (tab === "latest") {
+    return [...posts].sort((a, b) => {
+      const timeA = new Date(a.created_at).getTime();
+      const timeB = new Date(b.created_at).getTime();
+      return timeB - timeA;
+    });
+  }
 
   if (tab === "joined") {
     return rankJoinedFeed(posts, context.joinedCommunities);

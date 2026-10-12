@@ -4,6 +4,10 @@ import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
+    if (!(await isAuthorizedAdmin(req))) {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
+
     const privacyPolicy = await fetchLegalDocument("privacy_policy");
     const termsOfService = await fetchLegalDocument("terms_of_service");
 

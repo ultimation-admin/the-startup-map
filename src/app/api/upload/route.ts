@@ -10,6 +10,9 @@ const ALLOWED_MIME_TYPES = [
   "image/png",
   "image/webp",
   "image/gif",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+  "image/svg+xml",
   "video/mp4",
   "video/webm",
   "audio/mpeg",
@@ -65,7 +68,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("POST /api/upload error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to upload file to R2 storage" },
+      { error: "Failed to upload file to R2 storage" },
       { status: 500 }
     );
   }

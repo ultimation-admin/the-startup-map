@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   SparklesIcon,
   CheckIcon,
@@ -17,12 +17,12 @@ import {
   ActivityIcon,
   GamepadIcon,
 } from "./Icons";
-import { TermsAgreementCheckbox } from "./TermsAgreementCheckbox";
 
 interface FeedOnboardingModalProps {
   isOpen: boolean;
   userId: string;
   onComplete: (selectedInterests: string[], joinedCommunities: string[]) => void;
+  onDismiss: () => void;
 }
 
 export const INTEREST_TOPICS = [
@@ -49,12 +49,12 @@ export const DEFAULT_COMMUNITIES = [
   { id: "hiring", name: "/hiring", desc: "Early stage startup hiring & job posts" },
 ];
 
-export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardingModalProps) {
+export function FeedOnboardingModal({ isOpen, userId, onComplete, onDismiss }: FeedOnboardingModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [joinedCommunities, setJoinedCommunities] = useState<string[]>(["startups"]);
+  const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
   const [communitiesList, setCommunitiesList] = useState(DEFAULT_COMMUNITIES);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/communities")
@@ -73,6 +73,24 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    dialogRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onDismiss();
+      if (event.key === "Tab" && dialogRef.current) {
+        const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onDismiss]);
+
   if (!isOpen) return null;
 
   const toggleInterest = (id: string) => {
@@ -87,8 +105,8 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
     );
   };
 
-  const canProceedStep1 = selectedInterests.length >= 3;
-  const canFinishStep2 = joinedCommunities.length >= 3 && agreedToTerms;
+  const canProceedStep1 = true;
+  const canFinishStep2 = true;
 
   const handleFinish = () => {
     if (!canFinishStep2) return;
@@ -101,8 +119,9 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
   };
 
   return (
-    <div className="onboarding-modal-backdrop">
-      <div className="onboarding-modal-card">
+    <div className="onboarding-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onDismiss(); }}>
+      <div className="onboarding-modal-card" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="onboarding-title" aria-describedby="onboarding-description" tabIndex={-1}>
+        <button type="button" className="onboarding-dismiss-btn" onClick={onDismiss} aria-label="Close feed setup">×</button>
         {/* STEP INDICATOR HEADER */}
         <div className="onboarding-modal-header">
           <div className="onboarding-step-pills">
@@ -119,16 +138,14 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
         {/* STEP 1: CHOOSE INTERESTS */}
         {step === 1 && (
           <div className="onboarding-step-body">
-            <h2 className="onboarding-title">What do you want to see on your feed?</h2>
-            <p className="onboarding-subtitle">
-              Select at least <b>3 topics</b> to personalize your algorithm and discover relevant startups & peers.
+            <h2 id="onboarding-title" className="onboarding-title">What do you want to see on your feed?</h2>
+            <p id="onboarding-description" className="onboarding-subtitle">
+              Pick any topics you like to personalize your feed. You can change these later.
             </p>
 
             <div className="interest-counter-bar">
               <span className={`count-badge ${canProceedStep1 ? "ready" : ""}`}>
-                {selectedInterests.length >= 3
-                  ? `✓ ${selectedInterests.length} Topics Selected (Ready)`
-                  : `Selected ${selectedInterests.length} of 3 minimum`}
+                {selectedInterests.length ? `${selectedInterests.length} topics selected` : "No topics selected"}
               </span>
             </div>
 
@@ -170,7 +187,7 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
                 disabled={!canProceedStep1}
                 onClick={() => setStep(2)}
               >
-                {canProceedStep1 ? "Next" : "Select at least 3 topics to continue"}
+                Next
               </button>
             </div>
           </div>
@@ -179,16 +196,14 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
         {/* STEP 2: JOIN COMMUNITIES */}
         {step === 2 && (
           <div className="onboarding-step-body">
-            <h2 className="onboarding-title">Join communities to follow discussions</h2>
-            <p className="onboarding-subtitle">
-              Join at least <b>3 ecosystem communities</b> to populate your Joined feed and receive active discussion updates.
+            <h2 id="onboarding-title" className="onboarding-title">Join communities to follow discussions</h2>
+            <p id="onboarding-description" className="onboarding-subtitle">
+              Join any communities you want to follow. This step is optional.
             </p>
 
             <div className="interest-counter-bar">
               <span className={`count-badge ${canFinishStep2 ? "ready" : ""}`}>
-                {joinedCommunities.length >= 3
-                  ? `✓ ${joinedCommunities.length} Communities Joined (Ready)`
-                  : `Joined ${joinedCommunities.length} of 3 minimum`}
+                {joinedCommunities.length ? `${joinedCommunities.length} communities joined` : "No communities joined"}
               </span>
             </div>
 
@@ -219,10 +234,6 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
               })}
             </div>
 
-            <div style={{ marginTop: "16px", marginBottom: "8px" }}>
-              <TermsAgreementCheckbox checked={agreedToTerms} onChange={setAgreedToTerms} />
-            </div>
-
             <div className="onboarding-footer dual-buttons">
               <button
                 type="button"
@@ -231,17 +242,11 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete }: FeedOnboardi
               >
                 ← Back
               </button>
-              <button
-                type="button"
-                className="onboarding-primary-btn"
-                disabled={!canFinishStep2}
-                onClick={handleFinish}
-              >
-                {canFinishStep2
-                  ? "Finish setup"
-                  : joinedCommunities.length < 3
-                  ? "Join min. 3 communities"
-                  : "Agree to terms to finish"}
+              <button type="button" className="onboarding-secondary-btn" onClick={onDismiss}>
+                Skip for now
+              </button>
+              <button type="button" className="onboarding-primary-btn" onClick={handleFinish}>
+                Finish setup
               </button>
             </div>
           </div>

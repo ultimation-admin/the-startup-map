@@ -23,6 +23,7 @@ interface UserProfilePanelProps {
   onClose: () => void;
   onAddListingClick: () => void;
   onSelectListingOnMap?: (listing: Listing) => void;
+  onOpenJobs?: (listing: Listing) => void;
 }
 
 export function UserProfilePanel({
@@ -32,6 +33,7 @@ export function UserProfilePanel({
   onClose,
   onAddListingClick,
   onSelectListingOnMap,
+  onOpenJobs,
 }: UserProfilePanelProps) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +105,7 @@ export function UserProfilePanel({
           onClose={onClose}
           onSelectListingOnMap={onSelectListingOnMap}
           onProfileUpdated={loadListings}
+          onOpenJobs={onOpenJobs}
         />
       </div>
     );
@@ -143,7 +146,7 @@ export function UserProfilePanel({
             padding: "12px 24px",
             borderRadius: "10px",
             border: "none",
-            background: "#10b981",
+            background: "#f85900",
             color: "#ffffff",
             fontWeight: 800,
             fontSize: "14px",

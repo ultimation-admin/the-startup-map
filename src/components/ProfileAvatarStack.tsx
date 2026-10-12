@@ -26,7 +26,8 @@ export function ProfileAvatarStack({
   onAddNewClick,
   onOpenAccountSettings,
 }: ProfileAvatarStackProps) {
-  const { openUserProfile, signOut } = useClerk();
+  const clerk = useClerk();
+  const { openUserProfile, signOut } = clerk;
   const [listings, setListings] = useState<Listing[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -153,7 +154,7 @@ export function ProfileAvatarStack({
                 className="account-icon-btn"
                 onClick={() => {
                   setIsOpen(false);
-                  if (openUserProfile) {
+                  if (clerk.loaded && openUserProfile) {
                     openUserProfile();
                   } else if (onOpenAccountSettings) {
                     onOpenAccountSettings();
@@ -260,8 +261,8 @@ export function ProfileAvatarStack({
 
         .profile-dropdown-trigger:hover,
         .profile-dropdown-trigger.active {
-          border-color: #10b981;
-          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+          border-color: #f85900;
+          box-shadow: 0 0 0 2px rgba(248, 89, 0, 0.2);
           background: #fafafa;
         }
 
@@ -294,7 +295,7 @@ export function ProfileAvatarStack({
         }
 
         .trigger-avatar-content.master {
-          background: #10b981;
+          background: #f85900;
           color: #ffffff;
         }
 
@@ -312,16 +313,14 @@ export function ProfileAvatarStack({
           top: calc(100% + 8px);
           right: 0;
           width: 260px;
-          background: rgba(255, 255, 255, 0.88);
-          backdrop-filter: blur(24px) saturate(180%);
-          -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border: 1px solid rgba(255, 255, 255, 0.7);
-          border-radius: 16px;
+          background: #ffffff;
+          border: 1px solid #e5e7eb;
+          border-radius: 10px;
           padding: 8px;
-          box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.04);
+          box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
           z-index: 9999;
           transform-origin: top right;
-          animation: menuFadeIn 0.16s cubic-bezier(0.23, 1, 0.32, 1);
+          animation: menuFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         @keyframes menuFadeIn {
@@ -336,17 +335,19 @@ export function ProfileAvatarStack({
         }
 
         .menu-section-header {
-          font-size: 9px;
-          font-weight: 800;
-          letter-spacing: 0.5px;
-          color: #888888;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          color: #64748b;
           padding: 4px 8px 2px 8px;
         }
 
         .menu-account-card {
           padding: 8px 10px;
-          background: #f8f8fa;
-          border-radius: 12px;
+          background: #f8fafc;
+          border: 1px solid #f1f5f9;
+          border-radius: 8px;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -374,7 +375,7 @@ export function ProfileAvatarStack({
           width: 28px;
           height: 28px;
           border-radius: 50%;
-          background: #10b981;
+          background: #f85900;
           color: #ffffff;
           display: flex;
           align-items: center;
@@ -522,7 +523,7 @@ export function ProfileAvatarStack({
         }
 
         .menu-item-check {
-          color: #10b981;
+          color: #f85900;
           flex-shrink: 0;
         }
 
@@ -559,15 +560,15 @@ export function ProfileAvatarStack({
         }
 
         .menu-item-action-create:hover {
-          background: #eefcf3;
-          color: #16a34a;
+          background: #FFF1E8;
+          color: #f85900;
         }
 
         .create-icon-badge {
           width: 24px;
           height: 24px;
           border-radius: 50%;
-          background: #10b981;
+          background: #f85900;
           color: #ffffff;
           display: flex;
           align-items: center;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { d1Query, d1Execute } from "@/lib/d1";
+import { d1Query } from "@/lib/d1";
+import { deleteCommunityPost } from "@/lib/db";
 import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function GET(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function DELETE(req: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: "Post ID is required" }, { status: 400 });
     }
-    await d1Execute("DELETE FROM community_posts WHERE id = ?", [id]);
+    await deleteCommunityPost(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/admin/posts error:", error);

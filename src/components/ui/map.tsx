@@ -218,6 +218,7 @@ type MapProps = {
   onClick?: (e: MapLibreGL.MapMouseEvent) => void;
   /** Callback when the map is initialized and loaded */
   onLoad?: (map: MapLibreGL.Map) => void;
+  onError?: () => void;
 } & Omit<MapLibreGL.MapOptions, "container" | "style">;
 
 function DefaultLoader() {
@@ -254,6 +255,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     onViewportChange,
     loading = false,
     onLoad,
+    onError,
     ...props
   },
   ref,
@@ -275,6 +277,8 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
   const onLoadRef = useRef(onLoad);
   onLoadRef.current = onLoad;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const onClickRef = useRef(props.onClick);
   onClickRef.current = props.onClick;
@@ -340,6 +344,9 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       setIsLoaded(true);
       onLoadRef.current?.(map);
     };
+    const errorHandler = () => {
+      if (!map.loaded()) onErrorRef.current?.();
+    };
 
     // Viewport change handler - skip if triggered by internal update
     const handleMove = () => {
@@ -352,6 +359,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     };
 
     map.on("load", loadHandler);
+    map.on("error", errorHandler);
     map.on("style.load", styleLoadHandler);
     map.on("move", handleMove);
     map.on("click", handleClick);
@@ -359,10 +367,15 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
 
     return () => {
       map.off("load", loadHandler);
+      map.off("error", errorHandler);
       map.off("style.load", styleLoadHandler);
       map.off("move", handleMove);
       map.off("click", handleClick);
-      map.remove();
+      setTimeout(() => {
+        try {
+          map.remove();
+        } catch {}
+      }, 0);
       setIsLoaded(false);
       setIsStyleLoaded(false);
       setMapInstance(null);
@@ -570,7 +583,17 @@ function MapMarker({
     marker.addTo(map);
 
     return () => {
-      marker.remove();
+      try {
+        const el = marker.getElement();
+        if (el) {
+          el.style.display = "none";
+        }
+      } catch {}
+      setTimeout(() => {
+        try {
+          marker.remove();
+        } catch {}
+      }, 0);
     };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -633,12 +656,18 @@ type MarkerContentProps = {
 
 function MarkerContent({ children, className }: MarkerContentProps) {
   const { marker } = useMarkerContext();
+  const el = marker.getElement();
+
+  // Guard: only portal if the element exists and is connected to the DOM.
+  // When MapLibre removes a marker, the element is detached and portaling
+  // into it would cause a removeChild error on React unmount.
+  if (!el || !el.isConnected) return null;
 
   return createPortal(
     <div className={cn("relative cursor-pointer", className)}>
       {children || <DefaultMarkerIcon />}
     </div>,
-    marker.getElement(),
+    el,
   );
 }
 
@@ -700,7 +729,9 @@ function MarkerPopup({
     marker.setPopup(popup);
 
     return () => {
-      marker.setPopup(null);
+      try {
+        marker.setPopup(null);
+      } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
@@ -713,7 +744,13 @@ function MarkerPopup({
     }
   }, [popup, offset, maxWidth]);
 
-  const handleClose = () => popup.remove();
+  const handleClose = () => {
+    setTimeout(() => {
+      try {
+        popup.remove();
+      } catch {}
+    }, 0);
+  };
 
   return createPortal(
     <div
@@ -766,7 +803,13 @@ function MarkerTooltip({
     const handleMouseEnter = () => {
       tooltip.setLngLat(marker.getLngLat()).addTo(map);
     };
-    const handleMouseLeave = () => tooltip.remove();
+    const handleMouseLeave = () => {
+      setTimeout(() => {
+        try {
+          tooltip.remove();
+        } catch {}
+      }, 0);
+    };
 
     marker.getElement()?.addEventListener("mouseenter", handleMouseEnter);
     marker.getElement()?.addEventListener("mouseleave", handleMouseLeave);
@@ -774,7 +817,11 @@ function MarkerTooltip({
     return () => {
       marker.getElement()?.removeEventListener("mouseenter", handleMouseEnter);
       marker.getElement()?.removeEventListener("mouseleave", handleMouseLeave);
-      tooltip.remove();
+      setTimeout(() => {
+        try {
+          if (tooltip.isOpen()) tooltip.remove();
+        } catch {}
+      }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
@@ -1103,9 +1150,11 @@ function MapPopup({
 
     return () => {
       popup.off("close", onCloseProp);
-      if (popup.isOpen()) {
-        popup.remove();
-      }
+      setTimeout(() => {
+        try {
+          if (popup.isOpen()) popup.remove();
+        } catch {}
+      }, 0);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
@@ -1123,7 +1172,9 @@ function MapPopup({
   }, [popup, longitude, latitude, offset, maxWidth]);
 
   const handleClose = () => {
-    popup.remove();
+    try {
+      popup.remove();
+    } catch {}
   };
 
   return createPortal(

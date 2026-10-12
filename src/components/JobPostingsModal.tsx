@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { JobPosting, Listing } from "@/lib/db";
 
 interface JobPostingsModalProps {
@@ -19,9 +19,28 @@ export function JobPostingsModal({ isOpen, onClose, listing, currentUser }: JobP
   const [applicationUrl, setApplicationUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // Check if current user is owner (or in mock mode, if we are logged in, we let the user manage it if they created it or if they are in development)
   const isOwner = currentUser && (listing.owner_id === currentUser.id || listing.owner_id === "system");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    dialogRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab" && dialogRef.current) {
+        const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -84,13 +103,13 @@ export function JobPostingsModal({ isOpen, onClose, listing, currentUser }: JobP
   };
 
   return (
-    <div className="jobs-overlay">
-      <div className="jobs-modal">
-        <button className="jobs-close" onClick={onClose}>
+    <div className="jobs-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="jobs-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="jobs-modal-title" tabIndex={-1}>
+        <button type="button" className="jobs-close" onClick={onClose} aria-label="Close jobs dialog">
           &times;
         </button>
         <span className="jobs-kicker">{listing.name.toUpperCase()} JOBS</span>
-        <h2>Careers at {listing.name}</h2>
+        <h2 id="jobs-modal-title">Careers at {listing.name}</h2>
         <p className="jobs-desc">Explore active job opportunities and apply directly.</p>
 
         {loading ? (

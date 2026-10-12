@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const cleanHandleName = handle.replace(/^[ps]\//i, "");
 
     let whereClause = "user_name = ? OR LOWER(user_name) = LOWER(?)";
-    let params: any[] = [handle, handle];
+    const params: any[] = [handle, handle];
 
     if (ownerId) {
       whereClause += " OR user_id = ?";
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Extract replies from post_replies table
     let replyWhereClause = "user_name = ? OR LOWER(user_name) = LOWER(?)";
-    let replyParams: any[] = [handle, handle];
+    const replyParams: any[] = [handle, handle];
 
     if (ownerId) {
       replyWhereClause += " OR user_id = ?";

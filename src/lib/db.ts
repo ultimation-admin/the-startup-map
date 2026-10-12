@@ -8,6 +8,7 @@
 
 import { d1Query, d1QueryFirst, d1Execute, d1Batch } from "./d1";
 import { geocodeIndia } from "./integrations";
+import { getPublicMediaUrl, extractR2KeyFromUrl, deleteR2Object } from "./r2";
 
 // =========================================================================
 // Types (unchanged from supabase.ts)
@@ -76,6 +77,8 @@ export interface CommunityPost {
   content: string;
   image_url?: string;
   likes_count: number;
+  reposts_count: number;
+  reposted_by: string[];
   views_count: number;
   replies_count: number;
   liked_by: string[];
@@ -93,6 +96,9 @@ export interface PostReply {
   user_initials: string;
   content: string;
   created_at: string;
+  parent_reply_id?: string;
+  reply_to_user?: string;
+  upvotes_count?: number;
 }
 
 export interface Community {
@@ -162,7 +168,7 @@ function rowToListing(row: Record<string, unknown>): Listing {
     stage: row.stage ? String(row.stage) : undefined,
     description: row.description ? String(row.description) : undefined,
     website: row.website ? String(row.website) : undefined,
-    logo_url: row.logo_url ? String(row.logo_url) : undefined,
+    logo_url: row.logo_url ? (getPublicMediaUrl(String(row.logo_url)) || undefined) : undefined,
     tweet_url: row.tweet_url ? String(row.tweet_url) : undefined,
     phone_number: row.phone_number ? String(row.phone_number) : undefined,
     review_state: (String(row.review_state) || "pending") as ReviewState,
@@ -376,6 +382,28 @@ export async function updateListingDetails(
 
   if (setClauses.length === 0) return;
 
+  // Clean up old logo from R2 if logo_url is being changed
+  if ("logo_url" in updates) {
+    try {
+      const existing = await d1QueryFirst<{ logo_url?: string }>(
+        "SELECT logo_url FROM listings WHERE id = ?",
+        [id]
+      );
+      if (existing?.logo_url && existing.logo_url !== updates.logo_url) {
+        const oldKey = extractR2KeyFromUrl(existing.logo_url);
+        if (oldKey) {
+          try {
+            await deleteR2Object(oldKey);
+          } catch (r2Err) {
+            console.warn(`Failed to delete old logo R2 object ${oldKey} for listing ${id}:`, r2Err);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch old logo_url for listing ${id}:`, err);
+    }
+  }
+
   setClauses.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
   values.push(id);
 
@@ -396,6 +424,26 @@ export async function updateListingReviewState(
 }
 
 export async function deleteListingAdmin(id: string): Promise<void> {
+  // Clean up logo from R2 before deleting the listing row
+  try {
+    const listing = await d1QueryFirst<{ logo_url?: string }>(
+      "SELECT logo_url FROM listings WHERE id = ?",
+      [id]
+    );
+    if (listing?.logo_url) {
+      const fileKey = extractR2KeyFromUrl(listing.logo_url);
+      if (fileKey) {
+        try {
+          await deleteR2Object(fileKey);
+        } catch (r2Err) {
+          console.warn(`Failed to delete R2 logo ${fileKey} for listing ${id}:`, r2Err);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch listing ${id} for logo cleanup:`, err);
+  }
+
   await d1Execute("DELETE FROM listings WHERE id = ?", [id]);
 }
 
@@ -538,7 +586,6 @@ export async function updateUserProfile(
 
 export async function isAdminUser(userId: string): Promise<boolean> {
   if (!userId) return false;
-  if (userId === "user_admin" || userId === "tony_stark_admin") return true;
 
   const user = await fetchUserProfile(userId);
   if (!user) return false;
@@ -550,7 +597,7 @@ export async function isAdminUser(userId: string): Promise<boolean> {
   ].filter(Boolean);
 
   if (allowedAdminEmails.includes(email)) return true;
-  if (user.role === "admin" || user.role === "moderator") return true;
+  if (user.role === "admin") return true;
 
   return false;
 }
@@ -578,9 +625,7 @@ export async function fetchCommunityPosts(filters?: {
 
       if (expiredPosts.length > 0) {
         for (const expired of expiredPosts) {
-          await d1Execute("DELETE FROM post_replies WHERE post_id = ?", [expired.id]);
-          await d1Execute("DELETE FROM post_likes WHERE target_id = ?", [expired.id]);
-          await d1Execute("DELETE FROM community_posts WHERE id = ?", [expired.id]);
+          await deleteCommunityPost(expired.id);
         }
       }
     } catch (err) {
@@ -620,6 +665,7 @@ export async function fetchCommunityPosts(filters?: {
 
     let allReplies: Record<string, unknown>[] = [];
     let allLikes: Record<string, unknown>[] = [];
+    let allReposts: Record<string, unknown>[] = [];
 
     try {
       allReplies = await d1Query<Record<string, unknown>>(
@@ -639,6 +685,15 @@ export async function fetchCommunityPosts(filters?: {
       console.error("Error fetching post_likes batch:", err);
     }
 
+    try {
+      allReposts = await d1Query<Record<string, unknown>>(
+        "SELECT post_id, user_id FROM post_reposts WHERE post_id IN (" + placeholders + ")",
+        postIds
+      );
+    } catch (err) {
+      console.error("Error fetching post_reposts batch:", err);
+    }
+
     const repliesByPostId = new Map<string, PostReply[]>();
     for (const r of allReplies) {
       const pId = String(r.post_id);
@@ -648,10 +703,12 @@ export async function fetchCommunityPosts(filters?: {
         post_id: pId,
         user_id: String(r.user_id),
         user_name: String(r.user_name),
-        user_avatar: r.user_avatar ? String(r.user_avatar) : undefined,
+        user_avatar: r.user_avatar ? (getPublicMediaUrl(String(r.user_avatar)) || undefined) : undefined,
         user_initials: String(r.user_initials),
         content: String(r.content),
         created_at: String(r.created_at),
+        parent_reply_id: r.parent_reply_id ? String(r.parent_reply_id) : undefined,
+        reply_to_user: r.reply_to_user ? String(r.reply_to_user) : undefined,
       });
     }
 
@@ -662,6 +719,13 @@ export async function fetchCommunityPosts(filters?: {
       likesByPostId.get(pId)!.push(String(l.user_id));
     }
 
+    const repostsByPostId = new Map<string, string[]>();
+    for (const repost of allReposts) {
+      const postId = String(repost.post_id);
+      if (!repostsByPostId.has(postId)) repostsByPostId.set(postId, []);
+      repostsByPostId.get(postId)!.push(String(repost.user_id));
+    }
+
     return rows.map((row) => {
       const postId = String(row.id);
       return {
@@ -670,12 +734,14 @@ export async function fetchCommunityPosts(filters?: {
         community_name: String(row.community_name),
         user_id: String(row.user_id),
         user_name: String(row.user_name),
-        user_avatar: row.user_avatar ? String(row.user_avatar) : undefined,
+        user_avatar: row.user_avatar ? (getPublicMediaUrl(String(row.user_avatar)) || undefined) : undefined,
         user_initials: String(row.user_initials),
         user_role: row.user_role ? String(row.user_role) : undefined,
         content: String(row.content),
-        image_url: row.image_url ? String(row.image_url) : undefined,
+        image_url: row.image_url ? (getPublicMediaUrl(String(row.image_url)) || undefined) : undefined,
         likes_count: Number(row.likes_count),
+        reposts_count: repostsByPostId.get(postId)?.length || 0,
+        reposted_by: repostsByPostId.get(postId) || [],
         views_count: Number(row.views_count),
         replies_count: Number(row.replies_count),
         liked_by: likesByPostId.get(postId) || [],
@@ -728,6 +794,8 @@ export async function createCommunityPost(post: {
     content: post.content,
     image_url: post.image_url,
     likes_count: 0,
+    reposts_count: 0,
+    reposted_by: [],
     views_count: 0,
     replies_count: 0,
     liked_by: [],
@@ -735,6 +803,43 @@ export async function createCommunityPost(post: {
     created_at,
     expires_at,
   };
+}
+
+export async function deleteCommunityPost(postId: string): Promise<boolean> {
+  try {
+    const post = await d1QueryFirst<{ id: string; image_url?: string }>(
+      "SELECT id, image_url FROM community_posts WHERE id = ?",
+      [postId]
+    );
+
+    if (!post) {
+      return false;
+    }
+
+    // 1. Delete associated image from Cloudflare R2 bucket if present
+    if (post.image_url) {
+      const fileKey = extractR2KeyFromUrl(post.image_url);
+      if (fileKey) {
+        try {
+          await deleteR2Object(fileKey);
+        } catch (r2Err) {
+          console.warn(`Failed to delete R2 object ${fileKey} for post ${postId}:`, r2Err);
+        }
+      }
+    }
+
+    // 2. Cascade delete replies and likes from D1 database
+    await d1Execute("DELETE FROM post_replies WHERE post_id = ?", [postId]);
+    await d1Execute("DELETE FROM post_likes WHERE target_id = ?", [postId]);
+
+    // 3. Delete post row from D1 database
+    await d1Execute("DELETE FROM community_posts WHERE id = ?", [postId]);
+
+    return true;
+  } catch (error) {
+    console.error("deleteCommunityPost error:", error);
+    throw error;
+  }
 }
 
 export async function togglePostLike(
@@ -789,6 +894,85 @@ export async function togglePostLike(
   }
 }
 
+
+export type UserNotificationType = "like" | "reply" | "repost";
+export interface UserNotification {
+  id: string;
+  actor_name: string;
+  actor_avatar: string | null;
+  type: UserNotificationType;
+  post_id: string;
+  post_preview: string | null;
+  created_at: string;
+  is_read: number;
+}
+
+export async function notifyPostOwner(
+  postId: string,
+  actorId: string,
+  actorName: string,
+  actorAvatar: string | undefined,
+  type: UserNotificationType
+): Promise<void> {
+  try {
+    const post = await d1QueryFirst<{ user_id: string; content: string }>(
+      "SELECT user_id, content FROM community_posts WHERE id = ?",
+      [postId]
+    );
+    if (!post || post.user_id === actorId) return;
+    await d1Execute(
+      "INSERT INTO notifications (id, user_id, actor_user_id, actor_name, actor_avatar, type, post_id, post_preview) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [crypto.randomUUID(), post.user_id, actorId, actorName, actorAvatar ?? null, type, postId, post.content.slice(0, 220)]
+    );
+  } catch (error) {
+    console.warn("Unable to create activity notification:", error);
+  }
+}
+
+export async function fetchUserNotifications(userId: string): Promise<UserNotification[]> {
+  const rows = await d1Query<Record<string, unknown>>(
+    "SELECT id, actor_name, actor_avatar, type, post_id, post_preview, created_at, is_read FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 60",
+    [userId]
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    actor_name: String(row.actor_name || "Community member"),
+    actor_avatar: row.actor_avatar ? String(row.actor_avatar) : null,
+    type: String(row.type) as UserNotificationType,
+    post_id: String(row.post_id),
+    post_preview: row.post_preview ? String(row.post_preview) : null,
+    created_at: String(row.created_at),
+    is_read: Number(row.is_read || 0),
+  }));
+}
+
+export async function markUserNotificationsRead(userId: string): Promise<void> {
+  await d1Execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", [userId]);
+}
+
+export async function togglePostRepost(
+  postId: string,
+  userId: string
+): Promise<{ reposted: boolean; reposts_count: number }> {
+  const existing = await d1QueryFirst<{ post_id: string }>(
+    "SELECT post_id FROM post_reposts WHERE post_id = ? AND user_id = ?",
+    [postId, userId]
+  );
+
+  if (existing) {
+    await d1Execute("DELETE FROM post_reposts WHERE post_id = ? AND user_id = ?", [postId, userId]);
+  } else {
+    await d1Execute("INSERT OR IGNORE INTO post_reposts (post_id, user_id) VALUES (?, ?)", [postId, userId]);
+  }
+
+  const count = await d1QueryFirst<{ count: number }>(
+    "SELECT COUNT(*) as count FROM post_reposts WHERE post_id = ?",
+    [postId]
+  );
+
+  return { reposted: !existing, reposts_count: Number(count?.count ?? 0) };
+}
+
 export async function createPostReply(reply: {
   post_id: string;
   user_id: string;
@@ -796,21 +980,52 @@ export async function createPostReply(reply: {
   user_avatar?: string;
   user_initials: string;
   content: string;
+  parent_reply_id?: string;
+  reply_to_user?: string;
 }): Promise<PostReply> {
   const id = crypto.randomUUID();
   const created_at = new Date().toISOString();
 
-  await d1Batch([
-    {
-      sql: `INSERT INTO post_replies (id, post_id, user_id, user_name, user_avatar, user_initials, content, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [id, reply.post_id, reply.user_id, reply.user_name, reply.user_avatar || null, reply.user_initials, reply.content, created_at],
-    },
-    {
-      sql: "UPDATE community_posts SET replies_count = replies_count + 1 WHERE id = ?",
-      params: [reply.post_id],
-    },
-  ]);
+  try {
+    await d1Batch([
+      {
+        sql: `INSERT INTO post_replies (id, post_id, user_id, user_name, user_avatar, user_initials, content, created_at, parent_reply_id, reply_to_user)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          id,
+          reply.post_id,
+          reply.user_id,
+          reply.user_name,
+          reply.user_avatar || null,
+          reply.user_initials,
+          reply.content,
+          created_at,
+          reply.parent_reply_id || null,
+          reply.reply_to_user || null,
+        ],
+      },
+      {
+        sql: "UPDATE community_posts SET replies_count = replies_count + 1 WHERE id = ?",
+        params: [reply.post_id],
+      },
+    ]);
+  } catch (err) {
+    try {
+      await d1Batch([
+        {
+          sql: `INSERT INTO post_replies (id, post_id, user_id, user_name, user_avatar, user_initials, content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          params: [id, reply.post_id, reply.user_id, reply.user_name, reply.user_avatar || null, reply.user_initials, reply.content, created_at],
+        },
+        {
+          sql: "UPDATE community_posts SET replies_count = replies_count + 1 WHERE id = ?",
+          params: [reply.post_id],
+        },
+      ]);
+    } catch (fallbackErr) {
+      // Ignore D1 batch failure in offline mode
+    }
+  }
 
   return {
     id,
@@ -821,6 +1036,8 @@ export async function createPostReply(reply: {
     user_initials: reply.user_initials,
     content: reply.content,
     created_at,
+    parent_reply_id: reply.parent_reply_id,
+    reply_to_user: reply.reply_to_user,
   };
 }
 
@@ -968,6 +1185,23 @@ export async function createCommunity(name: string, description?: string): Promi
 }
 
 export async function deleteCommunity(id: string): Promise<void> {
+  // Clean up all posts (and their R2 media) belonging to this community
+  try {
+    const posts = await d1Query<{ id: string }>(
+      "SELECT id FROM community_posts WHERE community_id = ?",
+      [id]
+    );
+    for (const post of posts) {
+      try {
+        await deleteCommunityPost(post.id);
+      } catch (postErr) {
+        console.warn(`Failed to delete community post ${post.id} during community ${id} cleanup:`, postErr);
+      }
+    }
+  } catch (err) {
+    console.warn(`Failed to query community posts for community ${id}:`, err);
+  }
+
   await d1Execute("DELETE FROM communities WHERE id = ?", [id]);
 }
 
@@ -1008,4 +1242,65 @@ export async function upsertLegalDocument(key: "privacy_policy" | "terms_of_serv
      ON CONFLICT(key) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
     [key, content]
   );
+}
+
+export interface BrandingSettings {
+  logo_url: string | null;
+  favicon_url: string | null;
+}
+
+export async function fetchBrandingSettings(): Promise<BrandingSettings> {
+  let logo_url: string | null = null;
+  let favicon_url: string | null = null;
+
+  try {
+    const logoRow = await d1QueryFirst<Record<string, unknown>>(
+      "SELECT content FROM site_settings WHERE key = 'logo_url'"
+    );
+    if (logoRow && typeof logoRow.content === "string") {
+      logo_url = getPublicMediaUrl(logoRow.content.trim()) || null;
+    }
+
+    const faviconRow = await d1QueryFirst<Record<string, unknown>>(
+      "SELECT content FROM site_settings WHERE key = 'favicon_url'"
+    );
+    if (faviconRow && typeof faviconRow.content === "string") {
+      favicon_url = getPublicMediaUrl(faviconRow.content.trim()) || null;
+    }
+  } catch (err) {
+    console.warn("Failed to fetch branding settings from D1:", err);
+  }
+
+  return { logo_url, favicon_url };
+}
+
+export async function upsertBrandingSettings(settings: {
+  logo_url?: string | null;
+  favicon_url?: string | null;
+}): Promise<BrandingSettings> {
+  try {
+    await d1Execute(
+      "CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, content TEXT, updated_at TEXT)"
+    );
+  } catch {}
+
+  if (settings.logo_url !== undefined) {
+    await d1Execute(
+      `INSERT INTO site_settings (key, content, updated_at)
+       VALUES ('logo_url', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+       ON CONFLICT(key) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
+      [settings.logo_url || ""]
+    );
+  }
+
+  if (settings.favicon_url !== undefined) {
+    await d1Execute(
+      `INSERT INTO site_settings (key, content, updated_at)
+       VALUES ('favicon_url', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+       ON CONFLICT(key) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
+      [settings.favicon_url || ""]
+    );
+  }
+
+  return fetchBrandingSettings();
 }

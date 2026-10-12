@@ -87,6 +87,19 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
 ]);
 
+const VALID_FOLDERS = new Set<MediaFolder>(["avatars", "posts", "spotlights", "logos", "decks"]);
+
+const MIME_TO_EXTENSION: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/svg+xml": "svg",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "application/pdf": "pdf",
+};
+
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50 MB
 const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB
@@ -115,6 +128,9 @@ export async function createPresignedUploadUrl({
   fileSize,
   folder = "posts",
 }: PresignUploadInput): Promise<PresignedUploadResult> {
+  // Validate folder parameter
+  const targetFolder = VALID_FOLDERS.has(folder) ? folder : "posts";
+
   // Validate MIME type
   if (!ALLOWED_MIME_TYPES.has(contentType)) {
     throw new Error(`Unsupported file type: ${contentType}`);
@@ -128,10 +144,10 @@ export async function createPresignedUploadUrl({
     );
   }
 
-  // Build unique object key
-  const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
+  // Build unique object key (extension derived securely from MIME type)
+  const extension = MIME_TO_EXTENSION[contentType] || "bin";
   const uniqueId = crypto.randomUUID();
-  const fileKey = `${folder}/${uniqueId}.${extension}`;
+  const fileKey = `${targetFolder}/${uniqueId}.${extension}`;
 
   // Generate presigned URL (valid for 10 minutes)
   const command = new PutObjectCommand({
@@ -139,6 +155,7 @@ export async function createPresignedUploadUrl({
     Key: fileKey,
     ContentType: contentType,
     ContentLength: fileSize,
+    CacheControl: "public, max-age=31536000, immutable",
   });
 
   const uploadUrl = await getSignedUrl(getR2Client(), command, { expiresIn: 600 });
@@ -148,11 +165,89 @@ export async function createPresignedUploadUrl({
 }
 
 export function formatR2PublicUrl(fileKey: string): string {
-  const domain = R2_PUBLIC_DOMAIN?.trim().replace(/\/+$/, "");
+  if (!fileKey) return "";
+  const cleanKey = fileKey.replace(/^\/+/, "");
+  const domain = (process.env.NEXT_PUBLIC_R2_PUBLIC_DOMAIN || R2_PUBLIC_DOMAIN || "https://media.thestartupmap.com")
+    .trim()
+    .replace(/\/+$/, "");
+
   if (domain && domain.startsWith("http")) {
-    return `${domain}/${fileKey}`;
+    return `${domain}/${cleanKey}`;
   }
-  return `/api/media?key=${encodeURIComponent(fileKey)}`;
+
+  return `/api/media?key=${encodeURIComponent(cleanKey)}`;
+}
+
+export function getPublicMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  // 1. Data URLs or Blob preview URLs from file selection
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
+    return trimmed;
+  }
+
+  // 2. Legacy /api/media route with key parameter or path -> resolve to direct R2 CDN URL
+  if (trimmed.startsWith("/api/media")) {
+    try {
+      const parsedUrl = new URL(trimmed, "http://localhost");
+      const keyParam = parsedUrl.searchParams.get("key");
+      if (keyParam) {
+        return formatR2PublicUrl(keyParam);
+      }
+      const pathKey = parsedUrl.pathname.replace(/^\/api\/media\/?/, "");
+      if (pathKey) {
+        return formatR2PublicUrl(pathKey);
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  // 3. Already a full HTTP/HTTPS URL (including https://media.thestartupmap.com/...)
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  // 4. Otherwise treat as an R2 object key (e.g. "logos/abc.png", "posts/xyz.webp")
+  return formatR2PublicUrl(trimmed);
+}
+
+export function extractR2KeyFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith("data:") || trimmed.startsWith("blob:")) return null;
+
+  if (trimmed.startsWith("/api/media")) {
+    try {
+      const parsedUrl = new URL(trimmed, "http://localhost");
+      const keyParam = parsedUrl.searchParams.get("key");
+      if (keyParam) return keyParam.replace(/^\/+/, "");
+      const pathKey = parsedUrl.pathname.replace(/^\/api\/media\/?/, "");
+      if (pathKey) return pathKey.replace(/^\/+/, "");
+    } catch {}
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const parsedUrl = new URL(trimmed);
+      return parsedUrl.pathname.replace(/^\/+/, "");
+    } catch {}
+  }
+
+  return trimmed.replace(/^\/+/, "");
+}
+
+export function getFaviconMimeType(url: string | null | undefined): string {
+  if (!url) return "image/x-icon";
+  const clean = url.split("?")[0].toLowerCase();
+  if (clean.endsWith(".webp")) return "image/webp";
+  if (clean.endsWith(".png")) return "image/png";
+  if (clean.endsWith(".svg")) return "image/svg+xml";
+  if (clean.endsWith(".jpg") || clean.endsWith(".jpeg")) return "image/jpeg";
+  if (clean.endsWith(".gif")) return "image/gif";
+  return "image/x-icon";
 }
 
 /**
@@ -169,15 +264,17 @@ export async function uploadR2Buffer({
   contentType: string;
   folder?: MediaFolder;
 }): Promise<{ fileKey: string; publicUrl: string }> {
-  const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
+  const targetFolder = VALID_FOLDERS.has(folder as MediaFolder) ? folder : "posts";
+  const extension = MIME_TO_EXTENSION[contentType] || "bin";
   const uniqueId = crypto.randomUUID();
-  const fileKey = `${folder}/${uniqueId}.${extension}`;
+  const fileKey = `${targetFolder}/${uniqueId}.${extension}`;
 
   const command = new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: fileKey,
     Body: buffer,
     ContentType: contentType,
+    CacheControl: "public, max-age=31536000, immutable",
   });
 
   await getR2Client().send(command);

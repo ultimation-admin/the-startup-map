@@ -12,6 +12,7 @@ import {
   UploadIcon,
 } from "./Icons";
 import { TermsAgreementCheckbox } from "./TermsAgreementCheckbox";
+import { uploadFileToR2 } from "@/lib/uploadClient";
 
 interface AddListingFormProps {
   userId: string;
@@ -104,8 +105,8 @@ export function AddListingForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      setError("File size exceeds 10MB limit. Please upload a smaller image.");
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Image must be 5MB or smaller. Please choose a smaller file.");
       return;
     }
 
@@ -132,16 +133,14 @@ export function AddListingForm({
     // Strict validation enforcing required fields
     if (tab === "startup") {
       if (!name.trim()) return setError("Company name is required.");
-      if (!phone.trim()) return setError("Phone number is required.");
-      if (!logoUrl) return setError("Upload Logo (<5MB, 1:1 ratio) is required.");
+      if (!logoUrl) return setError("Upload a logo (5MB max) is required.");
       if (!website.trim()) return setError("Website URL is required.");
       if (!description.trim()) return setError("Short description is required.");
       if (!stage) return setError("Funding stage is required.");
       if (!sector) return setError("Sector is required.");
     } else {
       if (!name.trim()) return setError("Full name is required.");
-      if (!phone.trim()) return setError("Phone number is required.");
-      if (!logoUrl) return setError("Upload Profile Picture (<5MB, 1:1 ratio) is required.");
+      if (!logoUrl) return setError("Upload a profile picture (5MB max) is required.");
       if (!role) return setError("Role is required.");
       if (!website.trim()) return setError("Portfolio / Website link is required.");
       if (!description.trim()) return setError("Short description is required.");
@@ -153,21 +152,14 @@ export function AddListingForm({
     if (selectedFile) {
       setIsUploading(true);
       try {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        formData.append("folder", "logos");
-
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          finalR2LogoUrl = uploadData.url || finalR2LogoUrl;
-        }
+        const uploadResult = await uploadFileToR2(selectedFile, "logos");
+        if (!uploadResult.url) throw new Error("Image upload did not return a usable URL.");
+        finalR2LogoUrl = uploadResult.url;
       } catch (err) {
-        console.warn("R2 upload error during profile submission:", err);
+        setError(err instanceof Error ? err.message : "Image upload failed. Please try again.");
+        setLoading(false);
+        setIsUploading(false);
+        return;
       } finally {
         setIsUploading(false);
       }
@@ -277,7 +269,7 @@ export function AddListingForm({
 
       <form onSubmit={handleSubmit} className="inline-form compact-form grid-form-layout">
         {error && (
-          <div className="form-error-alert grid-col-full">
+          <div className="form-error-alert grid-col-full" role="alert">
             <AlertTriangleIcon size={14} /> {error}
           </div>
         )}
@@ -299,14 +291,14 @@ export function AddListingForm({
             </div>
 
             <div className="form-group">
-              <label htmlFor="phone-number">Phone Number *</label>
+              <label htmlFor="phone-number">Phone Number (optional)</label>
+              <small className="label-subtext">This number will be public on your profile.</small>
               <input
                 id="phone-number"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+91 98765 43210"
-                required
                 disabled={loading}
               />
             </div>
@@ -372,7 +364,7 @@ export function AddListingForm({
             <div className="form-group grid-col-full">
               <label htmlFor="upload-logo-input" className="label-with-subtext">
                 <span>Upload Logo *</span>
-                <span className="label-subtext">(&lt;5MB, 1:1)</span>
+                <span className="label-subtext">(5MB max; square image recommended)</span>
               </label>
               <div className="custom-file-picker-row">
                 <label htmlFor="upload-logo-input" className="choose-file-btn">
@@ -444,14 +436,14 @@ export function AddListingForm({
             </div>
 
             <div className="form-group">
-              <label htmlFor="people-phone">Phone Number *</label>
+              <label htmlFor="people-phone">Phone Number (optional)</label>
+              <small className="label-subtext">This number will be public on your profile.</small>
               <input
                 id="people-phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+91 98765 43210"
-                required
                 disabled={loading}
               />
             </div>
@@ -517,7 +509,7 @@ export function AddListingForm({
             <div className="form-group grid-col-full">
               <label htmlFor="profile-pic-input" className="label-with-subtext">
                 <span>Upload Profile Picture *</span>
-                <span className="label-subtext">(&lt;5MB, 1:1)</span>
+                <span className="label-subtext">(5MB max; square image recommended)</span>
               </label>
               <div className="custom-file-picker-row">
                 <label htmlFor="profile-pic-input" className="choose-file-btn">

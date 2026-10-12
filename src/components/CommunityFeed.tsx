@@ -8,10 +8,46 @@ import {
   Listing,
 } from "@/lib/db";
 import { rankCommunityFeed } from "@/lib/feedAlgorithm";
-import { SparklesIcon, PlusIcon, UploadIcon, ImageIcon, UserGroupIcon, FlameIcon, MapPinIcon, CheckIcon } from "./Icons";
+import {
+  SparklesIcon,
+  PlusIcon,
+  UploadIcon,
+  ImageIcon,
+  UserGroupIcon,
+  FlameIcon,
+  MapPinIcon,
+  CheckIcon,
+  RepostIcon,
+  ShareSendIcon,
+  MoreHorizontalIcon,
+} from "./Icons";
 import { CommunityFeedSkeleton } from "./Skeletons";
+import { EmptyFeedState } from "./EmptyFeedState";
 
 import { INTEREST_TOPICS } from "./FeedOnboardingModal";
+import { RedditThreadReplies } from "./RedditThreadReplies";
+import { uploadFileToR2 } from "@/lib/uploadClient";
+
+function formatTimeAgo(dateString?: string): string {
+  if (!dateString) return "â€”";
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    if (isNaN(diffMs) || diffMs < 0) return "â€”";
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) return `${Math.max(1, diffSecs)}s`;
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
+    return `${diffDays}d`;
+  } catch {
+    return "â€”";
+  }
+}
 
 interface CommunityFeedProps {
   userId: string;
@@ -21,10 +57,11 @@ interface CommunityFeedProps {
   isSignedIn: boolean;
   userInterests?: string[];
   userJoinedCommunities?: string[];
+  mobileTab?: "feed" | "map";
+  onToggleMobileTab?: (tab: "feed" | "map") => void;
   onRequireAuth: () => void;
   onOpenAddListing?: () => void;
   onSelectAuthorHandle?: (handle: string) => void;
-  onOpenFeedOnboarding?: () => void;
 }
 
 export function CommunityFeed({
@@ -35,18 +72,94 @@ export function CommunityFeed({
   isSignedIn,
   userInterests,
   userJoinedCommunities,
+  mobileTab = "feed",
+  onToggleMobileTab,
   onRequireAuth,
   onOpenAddListing,
   onSelectAuthorHandle,
-  onOpenFeedOnboarding,
 }: CommunityFeedProps) {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [communities, setCommunities] = useState<Community[]>(ECOSYSTEM_COMMUNITIES);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [selectedCommunityId, setSelectedCommunityId] = useState<string>("all");
-  const [joinedCommunities, setJoinedCommunities] = useState<string[]>(["genai", "saas"]);
+  const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
   const [showNoProfileModal, setShowNoProfileModal] = useState(false);
   const [userProfileListing, setUserProfileListing] = useState<Listing | null>(null);
-  const [communities, setCommunities] = useState<Community[]>([]);
+
+  useEffect(() => {
+    const openComposer = () => {
+      if (!isSignedIn) {
+        onRequireAuth();
+        return;
+      }
+      setShowCreateBox(true);
+      window.setTimeout(() => document.querySelector<HTMLTextAreaElement>(".create-post-composer textarea")?.focus(), 0);
+    };
+    window.addEventListener("startupmap:compose", openComposer);
+    return () => window.removeEventListener("startupmap:compose", openComposer);
+  }, [isSignedIn, onRequireAuth]);
+
+  // Repost & Share interactive state
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Create post form state
+  const [newPostText, setNewPostText] = useState("");
+  const [newPostCommunity, setNewPostCommunity] = useState("startups");
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showCreateBox, setShowCreateBox] = useState(false);
+
+  // Reply state: active post ID being replied to
+  const [activeReplyPostId, setActiveReplyPostId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+
+  const handleToggleRepost = async (post: CommunityPost) => {
+    if (!isSignedIn) {
+      onRequireAuth();
+      return;
+    }
+
+    setActionError(null);
+    try {
+      const res = await fetch("/api/posts/" + post.id + "/repost", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't update repost.");
+      setPosts((current) => current.map((item) =>
+        item.id === post.id
+          ? {
+              ...item,
+              reposts_count: data.reposts_count,
+              reposted_by: data.reposted
+                ? [...item.reposted_by, userId]
+                : item.reposted_by.filter((id) => id !== userId),
+            }
+          : item
+      ));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Couldn't update repost. Try again.");
+    }
+  };
+
+  const handleSharePost = async (post: CommunityPost) => {
+    const permalink = new URL(window.location.href);
+    permalink.hash = "post-" + post.id;
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: post.user_name, text: post.content, url: permalink.toString() });
+        return;
+      }
+      await navigator.clipboard.writeText(permalink.toString());
+      setShareFeedback("Post link copied");
+      window.setTimeout(() => setShareFeedback(null), 3000);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setActionError("Couldn't share this post. Please try again.");
+    }
+  };
 
   const loadCommunities = async () => {
     try {
@@ -82,33 +195,29 @@ export function CommunityFeed({
     }
   }, [isSignedIn, userId]);
 
-  // Create post form state
-  const [newPostText, setNewPostText] = useState("");
-  const [newPostCommunity, setNewPostCommunity] = useState("startups");
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [showCreateBox, setShowCreateBox] = useState(false);
-
-  // Reply state: active post ID being replied to
-  const [activeReplyPostId, setActiveReplyPostId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
-
   const loadFeed = async (isInitial = false) => {
     if (isInitial) setLoadingPosts(true);
+    setFeedError(null);
     try {
       const res = await fetch(selectedCommunityId === "all" ? '/api/posts' : `/api/posts?community_id=${selectedCommunityId}`);
-      if (res.ok) {
-        const data = await res.json();
-        const active = Array.isArray(data) ? data : (data.posts || []);
-        setPosts(active);
-      }
+      if (!res.ok) throw new Error("Feed could not be loaded.");
+      const data = await res.json();
+      const active = Array.isArray(data) ? data : (data.posts || []);
+      setPosts(active);
     } catch (err) {
       console.error(err);
+      setFeedError("We couldn't load the feed.");
     } finally {
       if (isInitial) setLoadingPosts(false);
     }
   };
+
+  useEffect(() => {
+    if (loadingPosts || posts.length === 0 || typeof window === "undefined") return;
+    const hash = window.location.hash;
+    const postId = hash.startsWith("#post-") ? decodeURIComponent(hash.slice(6)) : "";
+    if (postId) document.getElementById("post-" + postId)?.scrollIntoView({ block: "center" });
+  }, [loadingPosts, posts]);
 
   useEffect(() => {
     loadFeed(true);
@@ -188,22 +297,10 @@ export function CommunityFeed({
     // Upload file to R2 ONLY upon post submission
     if (selectedImageFile) {
       try {
-        const formData = new FormData();
-        formData.append("file", selectedImageFile);
-        formData.append("folder", "posts");
-
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          finalR2ImageUrl = uploadData.url || "";
-        }
+        const uploadResult = await uploadFileToR2(selectedImageFile, "posts");
+        finalR2ImageUrl = uploadResult.url || "";
       } catch (err) {
-        console.warn("R2 upload error during post submission, using preview URL fallback:", err);
-        finalR2ImageUrl = imagePreviewUrl;
+        console.warn("R2 upload error during post submission:", err);
       }
     } else if (imagePreviewUrl && !imagePreviewUrl.startsWith("data:")) {
       finalR2ImageUrl = imagePreviewUrl;
@@ -258,37 +355,42 @@ export function CommunityFeed({
       return;
     }
 
-    const updated = posts.map((p) => {
-      if (p.id === postId) {
-        const isLiked = p.liked_by.includes(userId);
-        const newLikedBy = isLiked
-          ? p.liked_by.filter((id) => id !== userId)
-          : [...p.liked_by, userId];
-
-        return {
-          ...p,
-          liked_by: newLikedBy,
-          likes_count: newLikedBy.length,
-        };
-      }
-      return p;
+    const previous = posts;
+    const updated = posts.map((post) => {
+      if (post.id !== postId) return post;
+      const liked = post.liked_by.includes(userId);
+      const likedBy = liked
+        ? post.liked_by.filter((id) => id !== userId)
+        : [...post.liked_by, userId];
+      return { ...post, liked_by: likedBy, likes_count: likedBy.length };
     });
     setPosts(updated);
 
     try {
-      await fetch(`/api/posts/${postId}/like`, { method: 'POST' });
+      const res = await fetch("/api/posts/" + postId + "/like", { method: "POST" });
+      if (!res.ok) throw new Error("Couldn't update like.");
+      const data = await res.json();
+      setPosts((current) => current.map((post) =>
+        post.id === postId ? { ...post, likes_count: data.result.likes_count } : post
+      ));
     } catch (err) {
-      console.error("Failed to toggle like", err);
+      setPosts(previous);
+      setActionError(err instanceof Error ? err.message : "Couldn't update like. Try again.");
     }
   };
 
-  const handleAddReply = async (postId: string) => {
+  const handleAddReply = async (
+    postId: string,
+    content: string,
+    parentReplyId?: string,
+    replyToUser?: string
+  ) => {
     if (!isSignedIn) {
       onRequireAuth();
       return;
     }
 
-    if (!replyText.trim()) return;
+    if (!content.trim()) return;
 
     const newReplyData = {
       post_id: postId,
@@ -296,7 +398,9 @@ export function CommunityFeed({
       user_name: userName,
       user_avatar: userAvatar,
       user_initials: userName.substring(0, 2).toUpperCase(),
-      content: replyText.trim(),
+      content: content.trim(),
+      parent_reply_id: parentReplyId,
+      reply_to_user: replyToUser,
     };
 
     try {
@@ -313,12 +417,12 @@ export function CommunityFeed({
             return {
               ...p,
               replies: [...p.replies, createdReply],
+              replies_count: p.replies_count + 1,
             };
           }
           return p;
         });
         setPosts(updated);
-        setReplyText("");
       } else {
         const errData = await res.json().catch(() => ({}));
         if (res.status === 403 || errData.error === "NO_PROFILE_CREATED") {
@@ -328,11 +432,35 @@ export function CommunityFeed({
         }
       }
     } catch (err) {
-      console.error("Failed to add reply", err);
+      console.error(err);
     }
   };
 
-  const [feedTab, setFeedTab] = useState<"for-you" | "joined" | "trending">("for-you");
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm("Are you sure you want to delete this post? This cannot be undone.")) {
+      return;
+    }
+
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+
+    try {
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to delete post");
+        loadFeed();
+      }
+    } catch (err) {
+      console.error("Error deleting post:", err);
+      alert("Failed to delete post. Please try again.");
+      loadFeed();
+    }
+  };
+
+  const [feedTab, setFeedTab] = useState<"for-you" | "latest" | "joined">("for-you");
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [showForYouDropdown, setShowForYouDropdown] = useState(false);
   const [showJoinedDropdown, setShowJoinedDropdown] = useState(false);
@@ -374,16 +502,14 @@ export function CommunityFeed({
         }
       }
 
-      if (userJoinedCommunities && userJoinedCommunities.length > 0) {
+      if (Array.isArray(userJoinedCommunities)) {
         setJoinedCommunities(userJoinedCommunities);
       } else {
         const savedCommunities = localStorage.getItem(`startupmap_communities_${userId}`);
         if (savedCommunities) {
           try {
             const parsed = JSON.parse(savedCommunities);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setJoinedCommunities(parsed);
-            }
+            if (Array.isArray(parsed)) setJoinedCommunities(parsed);
           } catch {}
         }
       }
@@ -442,9 +568,9 @@ export function CommunityFeed({
 
             {/* COMPOSER BODY */}
             <div className="composer-body">
-              {/* TARGET COMMUNITY HEADER: Post at /community-name */}
+              {/* TARGET COMMUNITY HEADER: posting destination */}
               <div className="composer-header-title">
-                <span className="post-at-text">Post at</span>
+                <span className="post-at-text">Posting to</span>
                 <div className="composer-community-pill">
                   <select
                     value={newPostCommunity}
@@ -472,6 +598,7 @@ export function CommunityFeed({
                 required
                 rows={3}
                 maxLength={500}
+                aria-label="Write your post"
                 placeholder="What's happening in your startup journey?"
                 value={newPostText}
                 onChange={(e) => setNewPostText(e.target.value)}
@@ -483,7 +610,7 @@ export function CommunityFeed({
                 <div className="composer-image-preview-wrap">
                   <img src={imagePreviewUrl} alt="Attachment" className="composer-image-preview" />
                   <button type="button" className="remove-composer-img-btn" onClick={handleRemoveImage}>
-                    ✕
+                    âœ•
                   </button>
                 </div>
               )}
@@ -500,13 +627,14 @@ export function CommunityFeed({
                         ? "Photo Attached (Click to change)"
                         : "Add Photo"
                     }
+                    aria-label={imagePreviewUrl ? "Change attached photo" : "Add a photo"}
                   >
                     <ImageIcon size={18} />
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleImageSelect}
-                      style={{ display: "none" }}
+                      className="composer-file-input"
                     />
                   </label>
                 </div>
@@ -538,27 +666,57 @@ export function CommunityFeed({
       <div ref={feedTopNavRef} className="feed-top-section-fixed">
         <div className="feed-top-action-bar">
           <div className="feed-nav-tabs twitter-nav-tabs">
-            {/* 1. FOR YOU TAB (WITH INTERESTS DROPDOWN) */}
+            {/* INLINE FEED / MAP MODE TOGGLE ON FAR LEFT CORNER OF SECTION BAR (MOBILE ONLY) */}
+            <div className="inline-section-mode-toggle mobile-only">
+              <button
+                type="button"
+                className={`mode-toggle-btn ${mobileTab === "feed" ? "active" : ""}`}
+                onClick={() => onToggleMobileTab?.("feed")}
+                title="Feed View"
+                aria-label="Feed View"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 11a9 9 0 0 1 9 9" />
+                  <path d="M4 4a16 16 0 0 1 16 16" />
+                  <circle cx="5" cy="19" r="1" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className={`mode-toggle-btn ${mobileTab === "map" ? "active" : ""}`}
+                onClick={() => onToggleMobileTab?.("map")}
+                title="Map View"
+                aria-label="Map View"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
+                  <line x1="9" y1="3" x2="9" y2="18" />
+                  <line x1="15" y1="6" x2="15" y2="21" />
+                </svg>
+              </button>
+            </div>
+
+            {/* 1. FOR YOU / LATEST TAB (WITH SORTING DROPDOWN) */}
             <div className="nav-tab-dropdown-wrap">
               <button
                 type="button"
-                className={`feed-nav-tab twitter-tab ${feedTab === "for-you" ? "active" : ""}`}
+                className={`feed-nav-tab twitter-tab ${feedTab === "for-you" || feedTab === "latest" ? "active" : ""}`}
                 onClick={() => {
-                  setFeedTab("for-you");
-                  setShowForYouDropdown(false);
+                  if (feedTab !== "for-you" && feedTab !== "latest") {
+                    setFeedTab("for-you");
+                  }
+                  setShowForYouDropdown((prev) => !prev);
                   setShowJoinedDropdown(false);
                 }}
               >
                 <span className="tab-label-text">
-                  <SparklesIcon size={14} className="tab-section-icon" filled={feedTab === "for-you"} />
-                  <span>For You</span>
+                  <span>{feedTab === "latest" ? "Latest" : "For You"}</span>
                   <span
                     className={`feed-chevron-arrow ${showForYouDropdown ? "open" : ""}`}
-                    title="Change Interest Topics"
+                    title="Change Feed Sorting"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setFeedTab("for-you");
-                      setShowForYouDropdown(!showForYouDropdown);
+                      setShowForYouDropdown((prev) => !prev);
                       setShowJoinedDropdown(false);
                     }}
                   >
@@ -566,33 +724,35 @@ export function CommunityFeed({
                       <path d="m6 9 6 6 6-6" />
                     </svg>
                   </span>
-                  {feedTab === "for-you" && <span className="twitter-tab-active-indicator" />}
+                  {(feedTab === "for-you" || feedTab === "latest") && <span className="twitter-tab-active-indicator" />}
                 </span>
               </button>
 
               {showForYouDropdown && (
-                <div className="tab-dropdown-menu">
-                  <div className="dropdown-title">FILTER BY INTEREST TOPICS</div>
-                  {INTEREST_TOPICS.map((topic) => {
-                    const isSelected = selectedInterests.includes(topic.id);
-                    const IconComponent = topic.icon;
-                    return (
-                      <button
-                        key={topic.id}
-                        type="button"
-                        className={`dropdown-item ${isSelected ? "selected" : ""}`}
-                        onClick={() => toggleInterest(topic.id)}
-                      >
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ color: topic.color, display: "inline-flex" }}>
-                            <IconComponent size={15} />
-                          </span>
-                          <span>{topic.label}</span>
-                        </span>
-                        <span className="chip-check-wrap">{isSelected ? <CheckIcon size={13} /> : "+"}</span>
-                      </button>
-                    );
-                  })}
+                <div className="tab-dropdown-menu compact">
+                  <button
+                    type="button"
+                    className={`dropdown-item ${feedTab === "for-you" ? "selected" : ""}`}
+                    onClick={() => {
+                      setFeedTab("for-you");
+                      setShowForYouDropdown(false);
+                    }}
+                  >
+                    <span>For You</span>
+                    {feedTab === "for-you" && <CheckIcon size={14} />}
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`dropdown-item ${feedTab === "latest" ? "selected" : ""}`}
+                    onClick={() => {
+                      setFeedTab("latest");
+                      setShowForYouDropdown(false);
+                    }}
+                  >
+                    <span>Latest</span>
+                    {feedTab === "latest" && <CheckIcon size={14} />}
+                  </button>
                 </div>
               )}
             </div>
@@ -605,11 +765,9 @@ export function CommunityFeed({
                 onClick={() => {
                   setFeedTab("joined");
                   setShowJoinedDropdown(false);
-                  setShowForYouDropdown(false);
                 }}
               >
                 <span className="tab-label-text">
-                  <UserGroupIcon size={14} className="tab-section-icon" filled={feedTab === "joined"} />
                   <span>Joined</span>
                   {joinedCommunities.length > 0 && (
                     <span className="joined-count-badge">{joinedCommunities.length}</span>
@@ -621,7 +779,6 @@ export function CommunityFeed({
                       e.stopPropagation();
                       setFeedTab("joined");
                       setShowJoinedDropdown(!showJoinedDropdown);
-                      setShowForYouDropdown(false);
                     }}
                   >
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -641,12 +798,7 @@ export function CommunityFeed({
 
                     return (
                       <>
-                        <div className="dropdown-title">YOUR JOINED COMMUNITIES ({joinedList.length})</div>
-                        {joinedList.length === 0 ? (
-                          <div style={{ padding: "8px 12px", fontSize: "12px", color: "#64748b" }}>
-                            No communities joined yet. Select below to join.
-                          </div>
-                        ) : (
+                        {joinedList.length > 0 && (
                           joinedList.map((c) => {
                             const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
                             return (
@@ -670,7 +822,7 @@ export function CommunityFeed({
 
                         {unjoinedList.length > 0 && (
                           <>
-                            <div className="dropdown-title" style={{ marginTop: "12px" }}>EXPLORE MORE COMMUNITIES</div>
+                            {joinedList.length > 0 && <div className="dropdown-title">Explore More</div>}
                             {unjoinedList.map((c) => {
                               const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
                               return (
@@ -696,23 +848,6 @@ export function CommunityFeed({
                 </div>
               )}
             </div>
-
-            {/* 3. TRENDING TAB */}
-            <button
-              type="button"
-              className={`feed-nav-tab twitter-tab ${feedTab === "trending" ? "active" : ""}`}
-              onClick={() => {
-                setFeedTab("trending");
-                setShowForYouDropdown(false);
-                setShowJoinedDropdown(false);
-              }}
-            >
-              <span className="tab-label-text">
-                <FlameIcon size={14} className="tab-section-icon" filled={feedTab === "trending"} />
-                <span>Trending</span>
-                {feedTab === "trending" && <span className="twitter-tab-active-indicator" />}
-              </span>
-            </button>
           </div>
 
           {!showCreateBox && (
@@ -736,156 +871,217 @@ export function CommunityFeed({
         </div>
       </div>
 
+      {actionError && <p className="feed-action-error" role="alert">{actionError}</p>}
+      {shareFeedback && <p className="feed-action-feedback" role="status">{shareFeedback}</p>}
+
       {/* POSTS FEED */}
       <div className="posts-feed">
         {loadingPosts ? (
           <CommunityFeedSkeleton count={3} />
+        ) : feedError ? (
+          <EmptyFeedState
+            title="Feed unavailable"
+            description={feedError}
+            actionLabel="Retry"
+            onAction={() => loadFeed(true)}
+          />
         ) : filteredPosts.length === 0 ? (
-          <div className="empty-feed-card">
-            <p>No 24-hour posts in this community yet.</p>
-            <button type="button" className="add-btn" onClick={() => setShowCreateBox(true)}>
-              + Be the first to post
-            </button>
-          </div>
+          <EmptyFeedState
+            title={
+              selectedCommunityId !== "all"
+                ? `No posts in /${selectedCommunityId}`
+                : feedTab === "joined"
+                ? "No posts from your joined communities"
+                : "No posts in this feed yet"
+            }
+            description={
+              selectedCommunityId !== "all"
+                ? `Be the first to share news, announcements, or thoughts in /${selectedCommunityId}.`
+                : feedTab === "joined" && joinedCommunities.length === 0
+                ? "You haven't joined any communities yet. Join communities or start posting to build your feed."
+                : "Be the first to share a post, ask a question, or introduce your startup with the community."
+            }
+            actionLabel="Create a post"
+            onAction={() => {
+              if (!isSignedIn) {
+                onRequireAuth();
+              } else {
+                setShowCreateBox(true);
+              }
+            }}
+            secondaryActionLabel={
+              selectedCommunityId !== "all" || feedTab !== "for-you"
+                ? "View For You Feed"
+                : undefined
+            }
+            onSecondaryAction={
+              selectedCommunityId !== "all" || feedTab !== "for-you"
+                ? () => {
+                    setSelectedCommunityId("all");
+                    setFeedTab("for-you");
+                  }
+                : undefined
+            }
+          />
         ) : (
           filteredPosts.map((post) => {
             const isLiked = post.liked_by.includes(userId);
             const isReplying = activeReplyPostId === post.id;
+            const isReposted = post.reposted_by.includes(userId);
+
+            const authorHandle = (
+              post.user_name.startsWith("p/") || post.user_name.startsWith("s/")
+                ? post.user_name
+                : post.user_name.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/(^_|-$)/g, "")
+            );
+            const categoryName = post.community_name.startsWith("/")
+              ? post.community_name.slice(1)
+              : post.community_name;
+
+            const timeAgoText = formatTimeAgo(post.created_at);
 
             return (
-              <div key={post.id} className="tweet-card">
-                {/* LEFT COLUMN: AVATAR */}
-                <div className="tweet-avatar-col">
-                  {post.user_avatar ? (
-                    <img src={post.user_avatar} alt={post.user_name} className="tweet-avatar" />
-                  ) : (
-                    <div className="tweet-initials">{post.user_initials}</div>
-                  )}
-                </div>
+              <div id={"post-" + post.id} key={post.id} className="tweet-card threads-post-card">
+                {/* TOP ROW: AVATAR LEFT + MAIN CONTENT RIGHT */}
+                <div className="post-card-top-row">
+                  {/* LEFT: AVATAR */}
+                  <div className="post-avatar-col">
+                    <div className="post-avatar-wrapper">
+                      {post.user_avatar ? (
+                        <img src={post.user_avatar} alt={post.user_name} className="post-avatar-img" />
+                      ) : (
+                        <div className="post-avatar-initials">{post.user_initials}</div>
+                      )}
+                    </div>
+                    {isReplying && <div className="main-post-thread-line" title="Thread connection line" />}
+                  </div>
 
-                {/* RIGHT COLUMN: TWEET CONTENT */}
-                <div className="tweet-main-col">
-                  {/* TWEET HEADER */}
-                  <div className="tweet-header">
-                    <div className="tweet-meta">
-                      <span className="tweet-community-pill">{post.community_name}</span>
-                      {(() => {
-                        const authorHandle = (
-                          post.user_name.startsWith("p/") || post.user_name.startsWith("s/")
-                            ? post.user_name
-                            : `p/${post.user_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`
-                        ).toLowerCase();
-                        return (
+                  {/* RIGHT: ALL CONTENT */}
+                  <div className="post-main-col">
+                    {/* HEADER BLOCK */}
+                    <div className="post-header-block">
+                      <div className="post-header-lines">
+                        <div className="post-header-line1">
                           <button
                             type="button"
+                            className="author-handle-btn"
                             onClick={() => onSelectAuthorHandle?.(authorHandle)}
-                            style={{ color: "#111827", textDecoration: "none", fontWeight: 800, border: "none", background: "transparent", padding: 0, cursor: "pointer", fontSize: "14px", fontFamily: "inherit" }}
                           >
                             {authorHandle}
                           </button>
-                        );
-                      })()}
+                          <span className="post-header-chevron" aria-hidden="true">{"\u203a"}</span>
+                          <span className="post-category-tag">{categoryName}</span>
+                          <span className="post-timestamp-inline">{timeAgoText}</span>
+                        </div>
+                      </div>
+                      {userId && post.user_id === userId ? (
+                        <button
+                          type="button"
+                          className="post-delete-btn"
+                          title="Delete post"
+                          onClick={() => handleDeletePost(post.id)}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="post-more-btn"
+                          title="Options"
+                          onClick={() => {
+                            if (!isSignedIn) {
+                              onRequireAuth();
+                            } else {
+                              alert("Thank you for reporting. Our moderation team will review this post within 24 hours.");
+                            }
+                          }}
+                        >
+                          <MoreHorizontalIcon size={18} />
+                        </button>
+                      )}
                     </div>
-                  </div>
 
-                  {/* TWEET BODY TEXT */}
-                  <p className="tweet-text">{post.content}</p>
+                    {/* POST COPY */}
+                    <p className="post-text-body">{post.content}</p>
 
-                  {/* TWEET ATTACHED MEDIA */}
-                  {post.image_url && (
-                    <div className="tweet-media-wrap">
-                      <img src={post.image_url} alt="Attachment" className="tweet-media-img" />
-                    </div>
-                  )}
+                    {/* MEDIA */}
+                    {post.image_url && (
+                      <div className="post-media-container">
+                        <img src={post.image_url} alt="Attachment" className="post-media-image" />
+                      </div>
+                    )}
 
-                  {/* ACTION BAR: LEFT INTERACTION CLUSTER (LIKE, COMMENT, VIEWS) | RIGHT REPORT BUTTON */}
-                  <div className="tweet-actions-row">
-                    <div className="interactions-left-cluster">
+                    {/* ACTION BAR */}
+                    <div className="post-actions-bar">
                       <button
                         type="button"
-                        className={`tweet-action-btn like-btn ${isLiked ? "liked" : ""}`}
+                        className={`post-action-btn like-action ${isLiked ? "liked" : ""}`}
                         onClick={() => handleToggleLike(post.id)}
                         title="Like"
                       >
-                        <svg viewBox="0 0 24 24" className="tweet-icon">
-                          {isLiked ? (
-                            <path fill="#10b981" d="M12 21.638h-.014C9.403 21.59 1.95 14.851 1.95 8.478c0-3.064 2.525-5.554 5.628-5.554 2.14 0 4.022 1.189 4.922 2.955.9-1.766 2.782-2.955 4.922-2.955 3.103 0 5.628 2.49 5.628 5.554 0 6.373-7.453 13.112-10.036 13.16h-.014z" />
-                          ) : (
-                            <path fill="currentColor" d="M16.697 3.5c-1.776 0-3.38.868-4.397 2.228C11.283 4.368 9.679 3.5 7.903 3.5 4.92 3.5 2.5 5.92 2.5 8.903c0 5.16 5.86 10.74 9.07 13.29.25.2.61.2.86 0 3.21-2.55 9.07-8.13 9.07-13.29 0-2.983-2.42-5.403-5.403-5.403zm-4.397 16.99c-2.44-2.02-7.8-6.9-7.8-11.587 0-1.876 1.524-3.4 3.4-3.4 1.34 0 2.54.77 3.09 1.96.19.41.6.67 1.05.67.45 0 .86-.26 1.05-.67.55-1.19 1.75-1.96 3.09-1.96 1.876 0 3.4 1.524 3.4 3.4 0 4.687-5.36 9.567-7.8 11.587z" />
-                          )}
+                        <svg viewBox="0 0 24 24" className="action-icon" fill={isLiked ? "#ef4444" : "none"} stroke={isLiked ? "#ef4444" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                         </svg>
-                        <span className={isLiked ? "like-count-green" : "action-count-text"}>
-                          {post.likes_count > 0 ? post.likes_count : ""}
-                        </span>
+                        <span className="action-count">{post.likes_count}</span>
                       </button>
 
                       <button
                         type="button"
-                        className={`tweet-action-btn reply-btn ${isReplying ? "active" : ""}`}
+                        className={`post-action-btn comment-action ${isReplying ? "active" : ""}`}
                         onClick={() => setActiveReplyPostId(isReplying ? null : post.id)}
                         title="Comment"
                       >
-                        <svg viewBox="0 0 24 24" className="tweet-icon">
-                          <path fill="currentColor" d="M1.751 10c0-4.42 3.584-8 8.005-8h4.489c4.42 0 8.005 3.58 8.005 8 0 3.15-1.82 5.88-4.469 7.19l-3.328 3.33a1.49 1.49 0 0 1-2.112 0l-3.328-3.33A8.01 8.01 0 0 1 1.75 10zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 2.5 1.536 4.65 3.738 5.56.368.15.607.51.607.91v1.65l2.138-2.14c.284-.28.67-.44 1.071-.44h2.942c3.317 0 6.005-2.69 6.005-6s-2.688-6-6.005-6H9.756z" />
+                        <svg viewBox="0 0 24 24" className="action-icon" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                         </svg>
-                        <span className="action-count-text">{post.replies.length > 0 ? post.replies.length : ""}</span>
+                        <span className="action-count">{post.replies_count ?? post.replies.length}</span>
                       </button>
 
-                      <div className="tweet-action-btn views-btn" title="Views">
-                        <svg viewBox="0 0 24 24" className="tweet-icon">
-                          <path fill="currentColor" d="M8.75 21V3h2v18h-2zM18 21V11h2v10h-2zM3 21V16h2v5H3zM13.25 21V7h2v14h-2z" />
-                        </svg>
-                        <span className="action-count-text">{post.views_count}</span>
-                      </div>
-                    </div>
+                      <button
+                        type="button"
+                        className={`post-action-btn repost-action ${isReposted ? "reposted" : ""}`}
+                        onClick={() => handleToggleRepost(post)}
+                        title={isReposted ? "Undo repost" : "Repost"}
+                        aria-label={isReposted ? "Undo repost" : "Repost"}
+                        style={{ color: isReposted ? "#10b981" : "inherit" }}
+                      >
+                        <RepostIcon size={18} className="action-icon" />
+                        <span className="action-count">{post.reposts_count}</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      className="tweet-action-btn report-btn"
-                      onClick={() => {
-                        if (!isSignedIn) {
-                          onRequireAuth();
-                        } else {
-                          alert("Thank you for reporting. Our moderation team will review this post within 24 hours.");
-                        }
-                      }}
-                      title="Report Post"
-                    >
-                      <svg viewBox="0 0 24 24" className="tweet-icon report-icon">
-                        <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
-                      </svg>
-                    </button>
+                      <button
+                        type="button"
+                        className="post-action-btn share-action"
+                        onClick={() => handleSharePost(post)}
+                        title="Share post"
+                        aria-label="Share post"
+                      >
+                        <ShareSendIcon size={18} className="action-icon" />
+                      </button>
+                    </div>
                   </div>
-
-                  {/* REPLIES SECTION */}
-                  {isReplying && (
-                    <div className="tweet-replies-wrap">
-                      {post.replies.map((reply) => (
-                        <div key={reply.id} className="tweet-reply-row">
-                          <div className="tweet-reply-avatar">{reply.user_initials}</div>
-                          <div className="tweet-reply-bubble">
-                            <span className="reply-name">{reply.user_name}</span>
-                            <p className="reply-body">{reply.content}</p>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="tweet-reply-input-row">
-                        <input
-                          type="text"
-                          placeholder="Post your reply..."
-                          value={replyText}
-                          onChange={(e) => setReplyText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleAddReply(post.id);
-                          }}
-                        />
-                        <button type="button" onClick={() => handleAddReply(post.id)}>
-                          Reply
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
+
+                {/* REPLIES SECTION (PRIMARY REPLIES ALIGNED WITH POST AVATAR COLUMN!) */}
+                {isReplying && (
+                  <RedditThreadReplies
+                    post={post}
+                    isSignedIn={isSignedIn}
+                    userId={userId}
+                    userName={userName}
+                    userAvatar={userAvatar}
+                    userProfileListing={userProfileListing}
+                    onRequireAuth={onRequireAuth}
+                    onShowNoProfileModal={() => setShowNoProfileModal(true)}
+                    onSelectAuthorHandle={onSelectAuthorHandle}
+                    onAddReply={handleAddReply}
+                  />
+                )}
               </div>
             );
           })
@@ -896,7 +1092,7 @@ export function CommunityFeed({
       {showNoProfileModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#ffffff", borderRadius: "16px", padding: "28px 24px", maxWidth: "420px", width: "100%", textAlign: "center", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
-            <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#f0eee6", display: "flex", alignItems: "center", justifyContent: "center", color: "#10b981", margin: "0 auto 16px" }}>
+            <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#FFF1E8", display: "flex", alignItems: "center", justifyContent: "center", color: "#f85900", margin: "0 auto 16px" }}>
               <MapPinIcon size={24} />
             </div>
             <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", fontWeight: 800, color: "#111827" }}>Map Profile Required</h3>
@@ -917,7 +1113,7 @@ export function CommunityFeed({
                   setShowNoProfileModal(false);
                   onOpenAddListing?.();
                 }}
-                style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: "#10b981", color: "#ffffff", fontWeight: 700, cursor: "pointer", fontSize: "14px" }}
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: "#f85900", color: "#ffffff", fontWeight: 700, cursor: "pointer", fontSize: "14px" }}
               >
                 + Create Map Profile
               </button>

@@ -38,6 +38,12 @@ export function FilterDropdown({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen) {
+      ref.current?.querySelector<HTMLButtonElement>('[role="option"]')?.focus();
+    }
+  }, [isOpen]);
+
   const defaultOption = options[0];
   const isFiltered = selected !== defaultOption;
 
@@ -79,10 +85,22 @@ export function FilterDropdown({
           className="dropdown-menu-popover filter-popover"
           role="listbox"
           aria-label={`${label} options`}
+          onKeyDown={(event) => {
+            const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+            if (!items.length) return;
+            const index = items.indexOf(document.activeElement as HTMLButtonElement);
+            let next = index;
+            if (event.key === "ArrowDown") next = (index + 1 + items.length) % items.length;
+            else if (event.key === "ArrowUp") next = (index - 1 + items.length) % items.length;
+            else if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = items.length - 1;
+            else return;
+            event.preventDefault();
+            items[next].focus();
+          }}
         >
-          <div className="menu-header-bar">
-            <span className="menu-header">{label.toUpperCase()}</span>
-            {isFiltered && (
+          {isFiltered && (
+            <div className="menu-header-bar">
               <button
                 type="button"
                 className="menu-reset-btn"
@@ -92,10 +110,10 @@ export function FilterDropdown({
                   setIsOpen(false);
                 }}
               >
-                Reset
+                Reset filter
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <div className="menu-items-list">
             {options.map((option) => {
               const isSelected = selected === option;

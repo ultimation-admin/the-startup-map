@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { SignIn, SignOutButton, useUser } from "@clerk/nextjs";
 import { Listing, ReviewState, UserProfile, CommunityPost, Community } from "@/lib/db";
+import { getPublicMediaUrl } from "@/lib/r2";
+import { uploadFileToR2 } from "@/lib/uploadClient";
 import {
   CheckIcon,
   AlertTriangleIcon,
@@ -23,7 +25,7 @@ import {
 import { AdminTableSkeleton } from "@/components/Skeletons";
 import { DEFAULT_PRIVACY_POLICY, DEFAULT_TERMS_OF_SERVICE } from "@/lib/legalContent";
 
-type AdminSection = "dashboard" | "profiles" | "users" | "posts" | "communities" | "legal" | "access";
+type AdminSection = "dashboard" | "profiles" | "users" | "posts" | "communities" | "branding" | "legal" | "access";
 
 function AdminAuthSubscriber({
   onAuthChange,
@@ -102,6 +104,89 @@ export default function TonyStarkAdminPage() {
       alert("Failed to save legal document.");
     } finally {
       setIsLegalSaving(false);
+    }
+  };
+
+  // Branding Settings State
+  const [logoUrl, setLogoUrl] = useState<string>("");
+  const [faviconUrl, setFaviconUrl] = useState<string>("");
+  const [isBrandingLoading, setIsBrandingLoading] = useState(false);
+  const [isBrandingSaving, setIsBrandingSaving] = useState(false);
+  const [brandingSaveMsg, setBrandingSaveMsg] = useState("");
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
+
+  const loadBrandingSettings = async () => {
+    setIsBrandingLoading(true);
+    try {
+      const res = await fetch("/api/admin/branding");
+      if (res.ok) {
+        const data = await res.json();
+        setLogoUrl(data.logo_url || "");
+        setFaviconUrl(data.favicon_url || "");
+      }
+    } catch (err) {
+      console.error("Failed to load branding settings:", err);
+    } finally {
+      setIsBrandingLoading(false);
+    }
+  };
+
+  const handleFileUploadForBranding = async (file: File, type: "logo" | "favicon") => {
+    if (type === "logo") setIsUploadingLogo(true);
+    else setIsUploadingFavicon(true);
+
+    try {
+      const uploadResult = await uploadFileToR2(file, "logos");
+      if (uploadResult.url) {
+        if (type === "logo") setLogoUrl(uploadResult.url);
+        else setFaviconUrl(uploadResult.url);
+      }
+    } catch (err: any) {
+      console.error(`Failed to upload ${type}:`, err);
+      alert(err?.message || `Failed to upload ${type}`);
+    } finally {
+      if (type === "logo") setIsUploadingLogo(false);
+      else setIsUploadingFavicon(false);
+    }
+  };
+
+  const handleSaveBranding = async () => {
+    setIsBrandingSaving(true);
+    setBrandingSaveMsg("");
+    try {
+      const res = await fetch("/api/admin/branding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ logo_url: logoUrl || null, favicon_url: faviconUrl || null }),
+      });
+      if (res.ok) {
+        setBrandingSaveMsg("App Branding saved & real-time sync broadcast sent!");
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(
+              "startupmap_branding_cache",
+              JSON.stringify({ logo_url: logoUrl || null, favicon_url: faviconUrl || null })
+            );
+          } catch {}
+        }
+        if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+          const bc = new BroadcastChannel("startupmap_branding_channel");
+          bc.postMessage({ type: "BRANDING_UPDATED", logo_url: logoUrl || null, favicon_url: faviconUrl || null });
+          bc.close();
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("startupmap_branding_updated", { detail: { logo_url: logoUrl || null, favicon_url: faviconUrl || null } }));
+        }
+        setTimeout(() => setBrandingSaveMsg(""), 4000);
+      } else {
+        alert("Failed to save branding settings.");
+      }
+    } catch (err) {
+      console.error("Failed to save branding:", err);
+      alert("Error saving branding settings.");
+    } finally {
+      setIsBrandingSaving(false);
     }
   };
 
@@ -246,6 +331,9 @@ export default function TonyStarkAdminPage() {
   useEffect(() => {
     if (isAuthenticated && activeSection === "legal") {
       loadLegalDocs();
+    }
+    if (isAuthenticated && activeSection === "branding") {
+      loadBrandingSettings();
     }
   }, [isAuthenticated, activeSection]);
 
@@ -454,8 +542,15 @@ export default function TonyStarkAdminPage() {
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", `startupmap_audit_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (typeof link.remove === "function") {
+      try {
+        link.remove();
+      } catch {}
+    } else if (link.parentNode) {
+      try {
+        link.parentNode.removeChild(link);
+      } catch {}
+    }
   };
 
   // KPI Calculations
@@ -862,6 +957,27 @@ export default function TonyStarkAdminPage() {
             }}
           >
             <MessageSquareIcon size={16} /> Feed Moderation ({posts.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("branding")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "12px 16px",
+              borderRadius: "10px",
+              border: "none",
+              background: activeSection === "branding" ? "#111827" : "transparent",
+              color: activeSection === "branding" ? "#ffffff" : "#4b5563",
+              fontWeight: 600,
+              fontSize: "14px",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <SparklesIcon size={16} /> App Branding
           </button>
 
           <button
@@ -1526,7 +1642,174 @@ export default function TonyStarkAdminPage() {
             </div>
           )}
 
-          {/* MODULE 6: LEGAL DOCUMENTS EDITOR */}
+          {/* MODULE 6: APP BRANDING & ASSETS (LOGO & FAVICON) */}
+          {activeSection === "branding" && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
+                <div>
+                  <h1 style={{ margin: "0 0 6px 0", fontSize: "28px", fontWeight: 800 }}>App Branding & Assets</h1>
+                  <p style={{ margin: 0, color: "#6b7280", fontSize: "15px" }}>
+                    Upload custom Logo and Favicon images. Changes sync in real-time across all active users and browser tabs.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isBrandingSaving || isUploadingLogo || isUploadingFavicon}
+                  onClick={handleSaveBranding}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "10px 20px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "#10b981",
+                    color: "#ffffff",
+                    fontWeight: 800,
+                    fontSize: "14px",
+                    cursor: isBrandingSaving ? "not-allowed" : "pointer",
+                    opacity: isBrandingSaving ? 0.7 : 1,
+                  }}
+                >
+                  <CheckIcon size={16} /> {isBrandingSaving ? "Saving..." : "Save Branding"}
+                </button>
+              </div>
+
+              {brandingSaveMsg && (
+                <div style={{ marginBottom: "20px", padding: "12px 16px", borderRadius: "10px", background: "#dcfce7", color: "#15803d", fontWeight: 700, fontSize: "14px", border: "1px solid #bbf7d0" }}>
+                  {brandingSaveMsg}
+                </div>
+              )}
+
+              {isBrandingLoading ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>Loading branding settings...</div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "24px" }}>
+                  {/* APP LOGO CARD */}
+                  <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", border: "1px solid #e5e7eb", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                      <span style={{ color: "#10b981", display: "inline-flex" }}>
+                        <SparklesIcon size={20} />
+                      </span>
+                      <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#111827" }}>Application Logo</h3>
+                    </div>
+                    <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#6b7280" }}>
+                      Displayed in top header bar. Recommended height around 32-40px (SVG, WebP, PNG, JPEG). Automatically scales with preserved proportions.
+                    </p>
+
+                    {/* LOGO LIVE PREVIEW BOX */}
+                    <div style={{ background: "#f8fafc", borderRadius: "12px", border: "2px dashed #cbd5e1", padding: "20px", textAlign: "center", marginBottom: "16px", minHeight: "100px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {getPublicMediaUrl(logoUrl) ? (
+                        <img src={getPublicMediaUrl(logoUrl)!} alt="App Logo Preview" style={{ maxHeight: "36px", maxWidth: "160px", width: "auto", height: "auto", objectFit: "contain" }} />
+                      ) : (
+                        <div style={{ color: "#94a3b8", fontSize: "13px", fontWeight: 600 }}>
+                          Default Text Logo: <span style={{ color: "#10b981", fontWeight: 800 }}>The Startup Map</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* UPLOAD & RESET ACTIONS */}
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <label style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 14px", borderRadius: "10px", background: "#111827", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: isUploadingLogo ? "wait" : "pointer" }}>
+                        <UploadIcon size={14} /> {isUploadingLogo ? "Uploading Logo..." : "Upload Custom Logo"}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                          style={{ display: "none" }}
+                          disabled={isUploadingLogo}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUploadForBranding(file, "logo");
+                          }}
+                        />
+                      </label>
+
+                      {logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setLogoUrl("")}
+                          style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#ffffff", color: "#ef4444", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                        >
+                          Reset Default
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Or enter Image URL (e.g. https://...)"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      style={{ width: "100%", marginTop: "12px", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  {/* APP FAVICON CARD */}
+                  <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", border: "1px solid #e5e7eb", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                      <span style={{ color: "#3b82f6", display: "inline-flex" }}>
+                        <GlobeIcon size={20} />
+                      </span>
+                      <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#111827" }}>Browser Favicon</h3>
+                    </div>
+                    <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#6b7280" }}>
+                      Displayed in browser tab header (ICO, PNG, SVG, 32x32px recommended).
+                    </p>
+
+                    {/* FAVICON TAB MOCKUP PREVIEW */}
+                    <div style={{ background: "#e2e8f0", borderRadius: "12px", padding: "12px 16px 0 16px", marginBottom: "16px" }}>
+                      <div style={{ background: "#ffffff", borderRadius: "10px 10px 0 0", padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: "8px", maxWidth: "220px", boxShadow: "0 -2px 6px rgba(0,0,0,0.04)" }}>
+                        {getPublicMediaUrl(faviconUrl) ? (
+                          <img src={getPublicMediaUrl(faviconUrl)!} alt="Favicon" style={{ width: "18px", height: "18px", objectFit: "contain" }} />
+                        ) : (
+                          <span style={{ fontSize: "14px" }}>📍</span>
+                        )}
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>The Startup Map</span>
+                      </div>
+                    </div>
+
+                    {/* UPLOAD & RESET ACTIONS */}
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <label style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 14px", borderRadius: "10px", background: "#111827", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: isUploadingFavicon ? "wait" : "pointer" }}>
+                        <UploadIcon size={14} /> {isUploadingFavicon ? "Uploading Favicon..." : "Upload Custom Favicon"}
+                        <input
+                          type="file"
+                          accept="image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml,image/webp"
+                          style={{ display: "none" }}
+                          disabled={isUploadingFavicon}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUploadForBranding(file, "favicon");
+                          }}
+                        />
+                      </label>
+
+                      {faviconUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFaviconUrl("")}
+                          style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#ffffff", color: "#ef4444", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                        >
+                          Reset Default
+                        </button>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Or enter Favicon URL (e.g. https://...)"
+                      value={faviconUrl}
+                      onChange={(e) => setFaviconUrl(e.target.value)}
+                      style={{ width: "100%", marginTop: "12px", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1", fontSize: "13px", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* MODULE 7: LEGAL DOCUMENTS EDITOR */}
           {activeSection === "legal" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>

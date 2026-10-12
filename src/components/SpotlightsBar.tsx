@@ -42,7 +42,7 @@ export function SpotlightsBar({
       if (res.ok) {
         const data = await res.json();
         const spotlightList: SpotlightStory[] = Array.isArray(data) ? data : (data.spotlights || []);
-        const active = spotlightList.filter(isSpotlightActive).slice(0, 8);
+        const active = spotlightList.filter(isSpotlightActive).slice(0, 6);
         setSpotlights(active);
       }
     } catch (err) {
@@ -104,8 +104,8 @@ export function SpotlightsBar({
   const handleBookSpotlight = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (spotlights.length >= 8) {
-      alert("All 8 Spotlight slots for today's 24-hour cycle are filled!");
+    if (spotlights.length >= 6) {
+      alert("All 6 Spotlight slots for today's 24-hour cycle are filled!");
       return;
     }
 
@@ -123,7 +123,7 @@ export function SpotlightsBar({
         logo_url: target.logo_url,
         media_url: mediaUrl || target.logo_url,
         media_type: mediaType,
-        color: target.color || "#10b981",
+        color: target.color || "#f85900",
         initials: target.initials || target.name.substring(0, 2).toUpperCase(),
         city: target.city,
         website_url: target.website,
@@ -141,7 +141,7 @@ export function SpotlightsBar({
         type: "startup",
         media_url: mediaUrl,
         media_type: mediaType,
-        color: "#10b981",
+        color: "#f85900",
         initials: customName.substring(0, 2).toUpperCase(),
         city: customCity,
         website_url: customWebsite,
@@ -157,7 +157,7 @@ export function SpotlightsBar({
       });
       if (res.ok) {
         const createdStory = await res.json();
-        const updated = [createdStory, ...spotlights].slice(0, 8);
+        const updated = [createdStory, ...spotlights].slice(0, 6);
         setSpotlights(updated);
         setIsBookModalOpen(false);
         setCustomName("");
@@ -174,12 +174,13 @@ export function SpotlightsBar({
     }
   };
 
+  if (spotlights.length === 0) return null;
+
   return (
     <div className="spotlights-wrapper">
       <div className="spotlights-header">
         <div className="spotlights-title-group">
-          <h3 className="spotlights-heading">Spotlights</h3>
-          <span className="spotlights-coming-soon-tag">Coming soon</span>
+          <h3 className="spotlights-heading">Founder stories</h3>
         </div>
       </div>
 
@@ -206,22 +207,7 @@ export function SpotlightsBar({
           </button>
         ))}
 
-        {/* REMAINING EMPTY SLOTS (COMING SOON MODE) */}
-        {Array.from({ length: 8 - spotlights.length }).map((_, emptyIndex) => (
-          <button
-            key={`empty_slot_${emptyIndex}`}
-            type="button"
-            className="story-circle-btn add-spotlight disabled-coming-soon"
-            onClick={() => {
-              alert("Spotlights feature is coming soon! Stay tuned.");
-            }}
-            title="Spotlights - Coming Soon"
-          >
-            <div className="story-ring-wrap add-wrap">
-              <PlusIcon size={14} />
-            </div>
-          </button>
-        ))}
+
       </div>
 
       {/* BOOK SPOTLIGHT MODAL WITH MEDIA (IMAGE / VIDEO < 1 MIN) UPLOAD */}

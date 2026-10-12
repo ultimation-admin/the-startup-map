@@ -2,6 +2,10 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/search(.*)",
+  "/map(.*)",
+  "/activity(.*)",
+  "/profile(.*)",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/sso-callback(.*)",
@@ -9,11 +13,25 @@ const isPublicRoute = createRouteMatcher([
   "/s/(.*)",
   "/terms-of-service(.*)",
   "/privacy-policy(.*)",
-  "/tony-stark-2501(.*)",
-  "/api/(.*)",
+  "/api/branding",
+  "/api/legal",
+  "/api/communities",
+  "/api/listings(.*)",
+  "/api/posts(.*)",
+  "/api/spotlights",
+  "/api/media(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
+  const isApiRoute = req.nextUrl.pathname.startsWith("/api");
+
+  // All non-GET API routes strictly require authentication
+  if (isApiRoute && req.method !== "GET") {
+    await auth.protect();
+    return;
+  }
+
+  // Protect non-public routes (including /tony-stark-2501 and /api/admin/*)
   if (!isPublicRoute(req)) {
     await auth.protect();
   }

@@ -36,8 +36,6 @@ Listing details — sector, stage, employee count, funding information, role, or
 
 Job posting content (eligible Startup tiers)
 
-Payment and billing information, processed via our third-party payment processor
-
 Any other information you voluntarily provide, including support inquiries
 
 3.2 Information Collected Automatically
@@ -61,8 +59,6 @@ Publicly available information used for Listing verification (e.g., company regi
 Create, display, and manage your public Listing
 
 Operate core features — search, filtering, the interactive map
-
-Process payments and manage subscriptions
 
 Verify Listings for our badge/verification system
 
@@ -208,15 +204,9 @@ Person Listings — individual profile, role type (founder, professional, adviso
 
 You agree to select the Listing type that accurately reflects your status and to keep it current.
 
-6. Subscription Plans, Fees, and Billing
+6. Accounts and Platform Access
 
-6.1 Tiers. The Platform offers paid subscription tiers for Startup and Person Listings and a free tier for VC Listings, as described on the pricing page at time of purchase. Features and pricing may change with notice under Section 19.
-
-6.2 Billing. Subscriptions bill on a recurring monthly basis via our third-party payment processor. By subscribing, you authorize recurring charges to your chosen payment method until cancellation.
-
-6.3 Cancellation. You may cancel anytime through account settings. Cancellation takes effect at the end of the current billing cycle; paid features remain accessible until then. [Reference separate Refund & Cancellation Policy for refund specifics.]
-
-6.4 Non-Payment. If payment fails or a subscription lapses, we may downgrade or deactivate the associated Listing, including removing it from public map visibility, until resolved.
+6.1 Access. Platform access and basic features are currently provided free of charge.
 
 7. Verification and Badges
 

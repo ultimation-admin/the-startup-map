@@ -15,12 +15,15 @@ import {
   PhoneIcon,
 } from "./Icons";
 import { CommunityFeedSkeleton } from "./Skeletons";
+import { EmptyFeedState } from "./EmptyFeedState";
+import { uploadFileToR2 } from "@/lib/uploadClient";
 
 interface DedicatedProfileStudioProps {
   profile: Listing;
   onClose: () => void;
   onSelectListingOnMap?: (listing: Listing) => void;
   onProfileUpdated?: () => void;
+  onOpenJobs?: (listing: Listing) => void;
 }
 
 type StudioTab = "posts" | "replies";
@@ -30,6 +33,7 @@ export function DedicatedProfileStudio({
   onClose,
   onSelectListingOnMap,
   onProfileUpdated,
+  onOpenJobs,
 }: DedicatedProfileStudioProps) {
   const [activeTab, setActiveTab] = useState<StudioTab>("posts");
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -42,6 +46,7 @@ export function DedicatedProfileStudio({
   const [tweetUrl, setTweetUrl] = useState(profile.tweet_url || "");
   const [logoUrl, setLogoUrl] = useState(profile.logo_url || "");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -99,6 +104,7 @@ export function DedicatedProfileStudio({
         return;
       }
       setFileName(file.name);
+      setSelectedFile(file);
       const previewUrl = URL.createObjectURL(file);
       setLogoUrl(previewUrl);
     }
@@ -110,6 +116,12 @@ export function DedicatedProfileStudio({
     setMessage(null);
 
     try {
+      let savedLogoUrl = logoUrl;
+      if (selectedFile) {
+        const uploadResult = await uploadFileToR2(selectedFile, "logos");
+        if (!uploadResult.url) throw new Error("Image upload did not return a usable URL.");
+        savedLogoUrl = uploadResult.url;
+      }
       const res = await fetch(`/api/listings/${profile.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -118,8 +130,8 @@ export function DedicatedProfileStudio({
           website,
           phone_number: phone,
           description,
-          tweet_url: profile.tweet_url,
-          logo_url: logoUrl,
+          tweet_url: tweetUrl,
+          logo_url: savedLogoUrl,
         }),
       });
 
@@ -128,6 +140,9 @@ export function DedicatedProfileStudio({
         throw new Error(errData.error || "Failed to update profile.");
       }
 
+      setLogoUrl(savedLogoUrl);
+      setSelectedFile(null);
+      setFileName(null);
       setMessage({ type: "success", text: "Profile details updated successfully." });
       setIsEditingProfile(false);
       onProfileUpdated?.();
@@ -295,7 +310,7 @@ export function DedicatedProfileStudio({
             >
               <UploadIcon size={10} />
             </label>
-            <input id="studio-logo-file" type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileUpload} />
+            <input id="studio-logo-file" type="file" accept="image/*" aria-label="Upload profile image (5MB max)" style={{ display: "none" }} onChange={handleFileUpload} />
           </div>
 
           {/* RIGHT: NAME, USERNAME, EDIT PROFILE BUTTON, DESCRIPTION, METADATA */}
@@ -308,7 +323,7 @@ export function DedicatedProfileStudio({
                     {name}
                   </h2>
                   {profile.type === "startup" ? (
-                    <span title="Verified Startup" style={{ color: "#10b981", display: "inline-flex" }}>
+                    <span title="Startup profile" aria-label="Startup profile" style={{ color: "#f85900", display: "inline-flex" }}>
                       <RocketIcon size={16} />
                     </span>
                   ) : null}
@@ -319,6 +334,12 @@ export function DedicatedProfileStudio({
               </div>
 
               {/* EDIT PROFILE ACTION BUTTON */}
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {profile.type === "startup" && onOpenJobs && (
+                <button type="button" className="btn-outline-pill" onClick={() => onOpenJobs(profile)}>
+                  Jobs
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsEditingProfile((prev) => !prev)}
@@ -326,6 +347,7 @@ export function DedicatedProfileStudio({
               >
                 {isEditingProfile ? "Cancel" : "Edit profile"}
               </button>
+              </div>
             </div>
 
             {/* BIO DESCRIPTION */}
@@ -375,7 +397,7 @@ export function DedicatedProfileStudio({
                     href={website.startsWith("http") ? website : `https://${website}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ color: "#10b981", textDecoration: "none", fontWeight: 600 }}
+                    style={{ color: "#f85900", textDecoration: "none", fontWeight: 600 }}
                   >
                     {website.replace(/^https?:\/\//, "")}
                   </a>
@@ -399,6 +421,7 @@ export function DedicatedProfileStudio({
           <form onSubmit={handleSaveChanges}>
             {message && (
               <div
+                role={message.type === "error" ? "alert" : "status"}
                 style={{
                   padding: "12px 16px",
                   borderRadius: "10px",
@@ -425,12 +448,12 @@ export function DedicatedProfileStudio({
                 />
               </div>
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>PHONE NUMBER</label>
+                <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>PHONE NUMBER (OPTIONAL)</label>
+                <small>This number is public on your profile.</small>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  required
                   className="input-form-field"
                 />
               </div>
@@ -444,6 +467,17 @@ export function DedicatedProfileStudio({
                 onChange={(e) => setWebsite(e.target.value)}
                 required
                 className="input-form-field"
+              />
+            </div>
+
+            <div style={{ marginBottom: "14px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>X / TWITTER URL (OPTIONAL)</label>
+              <input
+                type="url"
+                value={tweetUrl}
+                onChange={(e) => setTweetUrl(e.target.value)}
+                className="input-form-field"
+                placeholder="https://x.com/username"
               />
             </div>
 
@@ -530,7 +564,7 @@ export function DedicatedProfileStudio({
                     left: 0,
                     right: 0,
                     height: "4px",
-                    background: "#10b981",
+                    background: "#f85900",
                     borderRadius: "9999px",
                   }}
                 />
@@ -561,7 +595,7 @@ export function DedicatedProfileStudio({
                     left: 0,
                     right: 0,
                     height: "4px",
-                    background: "#10b981",
+                    background: "#f85900",
                     borderRadius: "9999px",
                   }}
                 />
@@ -575,9 +609,10 @@ export function DedicatedProfileStudio({
               {loadingContent ? (
                 <CommunityFeedSkeleton count={2} />
               ) : profilePosts.length === 0 ? (
-                <div style={{ padding: "40px 20px", textAlign: "center", color: "#536471", fontSize: "14.5px" }}>
-                  No posts published yet by {name}.
-                </div>
+                <EmptyFeedState
+                  title={`No posts published yet`}
+                  description={`No posts have been published by ${name} yet.`}
+                />
               ) : (
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {profilePosts.map((post) => (
@@ -591,7 +626,7 @@ export function DedicatedProfileStudio({
                           width: "40px",
                           height: "40px",
                           borderRadius: "50%",
-                          background: logoUrl ? "transparent" : "#10b981",
+                          background: logoUrl ? "transparent" : "#f85900",
                           color: "#ffffff",
                           display: "flex",
                           alignItems: "center",
@@ -612,7 +647,7 @@ export function DedicatedProfileStudio({
                             <span style={{ fontSize: "13px", color: "#536471" }}>&bull;</span>
                             <small style={{ color: "#536471", fontSize: "13px" }}>{new Date(post.created_at).toLocaleDateString()}</small>
                           </div>
-                          <span style={{ background: "rgba(16, 185, 129, 0.1)", color: "#10b981", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>
+                          <span style={{ background: "rgba(248, 89, 0, 0.1)", color: "#f85900", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>
                             {post.community_name}
                           </span>
                         </div>
@@ -687,7 +722,7 @@ export function DedicatedProfileStudio({
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {profileReplies.map((reply) => (
                     <div key={reply.id} className="timeline-row-item" style={{ padding: "14px 20px" }}>
-                      <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: logoUrl ? "transparent" : "#10b981", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "13px", flexShrink: 0, overflow: "hidden" }}>
+                      <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: logoUrl ? "transparent" : "#f85900", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "13px", flexShrink: 0, overflow: "hidden" }}>
                         {logoUrl ? <img src={logoUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : profile.initials}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
-import { togglePostLike } from "@/lib/db";
+import { notifyPostOwner, togglePostLike } from "@/lib/db";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,6 +11,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const result = await togglePostLike(id, user.id);
+    if (result.liked) {
+      const actorName = [user.firstName, user.lastName].filter(Boolean).join(" ") || user.primaryEmailAddress?.emailAddress || "A community member";
+      await notifyPostOwner(id, user.id, actorName, user.imageUrl, "like");
+    }
 
     return NextResponse.json({ result });
   } catch (error) {

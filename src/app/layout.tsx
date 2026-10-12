@@ -1,7 +1,19 @@
 import { ClerkProvider } from "@clerk/nextjs";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Gabarito } from "next/font/google";
 import "./globals.css";
+
+import { fetchBrandingSettings } from "@/lib/db";
+import { getPublicMediaUrl, getFaviconMimeType } from "@/lib/r2";
+import { PostHogProvider } from "@/components/PostHogProvider";
+import { SAFE_DOM_GUARD_SCRIPT } from "@/lib/safe-dom-guard";
+import { PrimaryAppShell } from "@/components/PrimaryAppShell";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 const gabarito = Gabarito({
   subsets: ["latin"],
@@ -10,17 +22,36 @@ const gabarito = Gabarito({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "The Startup Map | India's startup ecosystem",
-  description: "Discover the people, companies, and investors building India's future.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await fetchBrandingSettings();
+  const rawFavicon = branding.favicon_url;
+  const resolvedFavicon = rawFavicon ? getPublicMediaUrl(rawFavicon) : null;
+  const faviconUrl = resolvedFavicon || "/favicon.ico";
+  const faviconType = getFaviconMimeType(faviconUrl);
 
-export default function RootLayout({
+  return {
+    title: "The Startup Map | India's startup ecosystem",
+    description: "Discover the people, companies, and investors building India's future.",
+    icons: {
+      icon: [
+        { url: faviconUrl, type: faviconType },
+      ],
+      shortcut: [{ url: faviconUrl, type: faviconType }],
+      apple: [{ url: faviconUrl }],
+    },
+  };
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const branding = await fetchBrandingSettings();
+  const logoUrl = branding.logo_url ? getPublicMediaUrl(branding.logo_url) : null;
   return (
     <html lang="en" className={gabarito.variable}>
       <head>
+        
+        <script dangerouslySetInnerHTML={{ __html: SAFE_DOM_GUARD_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://basemaps.cartocdn.com" crossOrigin="anonymous" />
@@ -36,22 +67,31 @@ export default function RootLayout({
         <link rel="preconnect" href="https://unpkg.com" crossOrigin="anonymous" />
       </head>
       <body className={gabarito.className}>
+
         <ClerkProvider
           appearance={{
             variables: {
-              colorPrimary: "#10b981",
+              colorPrimary: "#f85900",
               colorBackground: "#ffffff",
-              colorNeutral: "#0f172a",
-              borderRadius: "1rem",
-              fontFamily: "var(--font-gabarito), 'Gabarito', sans-serif",
+              colorForeground: "#000000",
+              colorMutedForeground: "#5B6368",
+              colorInput: "#F0F2F5",
+              colorInputForeground: "#000000",
+              borderRadius: "10px",
+              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
             },
             elements: {
-              formButtonPrimary: "bg-[#10b981] hover:bg-[#059669] text-white font-bold rounded-full py-2.5 text-xs shadow-sm transition-all",
-              formFieldInput: "rounded-xl border border-stone-300 text-stone-900 focus:border-[#10b981] text-xs py-2",
+              formButtonPrimary:
+                "bg-[#f85900] hover:bg-[#e04f00] text-white font-semibold rounded-full h-10 text-sm normal-case shadow-xs transition-all duration-100 hover:scale-[1.01] active:scale-[0.98]",
+              formFieldInput:
+                "rounded-[10px] border border-transparent bg-[#F0F2F5] focus:bg-white focus:border-[#f85900] focus:ring-2 focus:ring-[#f85900]/25 text-[13.5px] px-3.5 h-10 text-black font-medium transition-all duration-100 placeholder:text-[#666666]",
+              footerActionLink: "text-[#f85900] font-semibold hover:underline",
             },
           }}
         >
-          {children}
+          <PostHogProvider>
+            <PrimaryAppShell logoUrl={logoUrl}>{children}</PrimaryAppShell>
+          </PostHogProvider>
         </ClerkProvider>
       </body>
     </html>

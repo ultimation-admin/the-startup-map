@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
-import { createPostReply, fetchUserListings } from "@/lib/db";
+import { createPostReply, fetchUserListings, notifyPostOwner } from "@/lib/db";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const body = await req.json();
-    const { content } = body;
+    const { content, parent_reply_id, reply_to_user } = body;
 
     if (!content) {
       return NextResponse.json({ error: "Content is required" }, { status: 400 });
@@ -50,8 +50,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       user_avatar: userAvatar,
       user_initials: userInitials,
       content,
+      parent_reply_id: parent_reply_id || undefined,
+      reply_to_user: reply_to_user || undefined,
     });
 
+    await notifyPostOwner(id, user.id, userName, userAvatar, "reply");
     return NextResponse.json({ reply }, { status: 201 });
   } catch (error) {
     console.error("POST /api/posts/[id]/replies error:", error);

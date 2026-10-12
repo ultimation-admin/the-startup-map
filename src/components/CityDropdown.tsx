@@ -86,6 +86,12 @@ export function CityDropdownSelector({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen) {
+      containerRef.current?.querySelector<HTMLButtonElement>('[role="option"]')?.focus();
+    }
+  }, [isOpen]);
+
   const isFiltered = selectedCity !== "All Cities";
 
   return (
@@ -123,10 +129,22 @@ export function CityDropdownSelector({
           className="dropdown-menu-popover city-popover"
           role="listbox"
           aria-label="City Options"
+          onKeyDown={(event) => {
+            const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+            if (!items.length) return;
+            const index = items.indexOf(document.activeElement as HTMLButtonElement);
+            let next = index;
+            if (event.key === "ArrowDown") next = (index + 1 + items.length) % items.length;
+            else if (event.key === "ArrowUp") next = (index - 1 + items.length) % items.length;
+            else if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = items.length - 1;
+            else return;
+            event.preventDefault();
+            items[next].focus();
+          }}
         >
-          <div className="menu-header-bar">
-            <span className="menu-header">SELECT CITY</span>
-            {isFiltered && (
+          {isFiltered && (
+            <div className="menu-header-bar">
               <button
                 type="button"
                 className="menu-reset-btn"
@@ -136,10 +154,10 @@ export function CityDropdownSelector({
                   setIsOpen(false);
                 }}
               >
-                Reset
+                Reset city
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <div className="menu-items-list">
             {CITIES.map((city) => {
               const isSelected = selectedCity === city;

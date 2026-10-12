@@ -21,23 +21,23 @@ export default function TermsOfServicePage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] text-[#0f172a] font-sans antialiased selection:bg-[#10b981]/20">
+    <div className="min-h-screen bg-[#F2F2F7] text-[#0f172a] font-sans antialiased selection:bg-[#f85900]/20">
       {/* Header Bar */}
       <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-black/5 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link href="/" className="flex items-center gap-1.5 no-underline">
             <span className="font-black text-xl tracking-tight text-black">THE</span>
-            <span className="bg-[#10b981] text-white font-black text-xs tracking-wider px-2 py-1 rounded-md uppercase">
+            <span className="bg-[#f85900] text-white font-black text-xs tracking-wider px-2 py-1 rounded-md uppercase">
               STARTUP
             </span>
             <span className="font-black text-xl tracking-tight text-black">MAP</span>
           </Link>
-          <span className="text-[9.5px] font-extrabold text-[#059669] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 uppercase tracking-widest">
+          <span className="text-[9.5px] font-extrabold text-[#e04f00] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 uppercase tracking-widest">
             BETA
           </span>
         </div>
 
-        <span className="text-[11px] font-black text-[#10b981] uppercase tracking-widest bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200/60 shadow-xs">
+        <span className="text-[11px] font-black text-[#f85900] uppercase tracking-widest bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200/60 shadow-xs">
           LEGAL
         </span>
       </header>
@@ -48,7 +48,7 @@ export default function TermsOfServicePage() {
         <div className="mb-6">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#059669] hover:underline bg-white border border-black/5 shadow-xs px-4 py-2 rounded-full transition-all"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#e04f00] hover:underline bg-white border border-black/5 shadow-xs px-4 py-2 rounded-full transition-all"
           >
             ← Back
           </Link>
@@ -64,7 +64,7 @@ export default function TermsOfServicePage() {
                 The Startup Map Platform
               </p>
             </div>
-            <span className="text-[11px] font-black text-[#10b981] uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/50">
+            <span className="text-[11px] font-black text-[#f85900] uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/50">
               LEGAL
             </span>
           </div>
@@ -85,7 +85,7 @@ export default function TermsOfServicePage() {
           <div className="border-t border-slate-100 mt-12 pt-6 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
             <p className="m-0">© {new Date().getFullYear()} The Startup Map. All rights reserved.</p>
             <div className="flex gap-4">
-              <Link href="/privacy-policy" className="text-[#059669] font-bold hover:underline">
+              <Link href="/privacy-policy" className="text-[#e04f00] font-bold hover:underline">
                 Privacy Policy →
               </Link>
             </div>

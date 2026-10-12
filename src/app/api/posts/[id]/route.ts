@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { d1Execute, d1QueryFirst } from "@/lib/d1";
+import { deleteCommunityPost } from "@/lib/db";
 import { isAuthorizedAdmin } from "@/lib/adminAuth";
 
 export async function PATCH(
@@ -71,7 +72,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden: Not the post owner or admin" }, { status: 403 });
     }
 
-    await d1Execute("DELETE FROM community_posts WHERE id = ?", [id]);
+    await deleteCommunityPost(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/posts/[id] error:", error);

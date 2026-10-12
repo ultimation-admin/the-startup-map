@@ -23,7 +23,7 @@ export function TermsAgreementCheckbox({
         id="terms-agreement-checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className={`mt-0.5 h-4 w-4 rounded border-slate-300 text-[#10b981] focus:ring-[#10b981] cursor-pointer transition-all ${
+        className={`mt-0.5 h-4 w-4 rounded border-slate-300 text-[#f85900] focus:ring-[#f85900] cursor-pointer transition-all ${
           error ? "border-red-500 ring-2 ring-red-200" : ""
         }`}
       />
@@ -33,7 +33,7 @@ export function TermsAgreementCheckbox({
           href="/terms-of-service"
           target="_blank"
           rel="noopener noreferrer"
-          className="font-bold text-[#059669] hover:underline"
+          className="font-bold text-[#f85900] hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           Terms of Service
@@ -43,7 +43,7 @@ export function TermsAgreementCheckbox({
           href="/privacy-policy"
           target="_blank"
           rel="noopener noreferrer"
-          className="font-bold text-[#059669] hover:underline"
+          className="font-bold text-[#f85900] hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           Privacy Policy

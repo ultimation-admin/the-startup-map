@@ -26,14 +26,25 @@ export async function GET(req: NextRequest) {
     }
 
     const bytes = await object.Body.transformToByteArray();
-    const contentType = object.ContentType || "image/png";
+    const contentType = (object.ContentType || "image/png").toLowerCase();
+
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline';",
+    };
+
+    // Force download disposition for SVGs and PDFs to prevent stored XSS execution in app origin
+    if (contentType === "image/svg+xml" || contentType === "application/pdf") {
+      headers["Content-Disposition"] = 'attachment; filename="download"';
+    } else {
+      headers["Content-Disposition"] = "inline";
+    }
 
     return new NextResponse(Buffer.from(bytes), {
       status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
-      },
+      headers,
     });
   } catch (error: any) {
     console.error("GET /api/media error:", error?.message || error);

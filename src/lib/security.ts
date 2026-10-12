@@ -1,10 +1,15 @@
 import crypto from "crypto";
 
-// Server-side encryption secret (derived from ENCRYPTION_SECRET env var or fallback server key)
-const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET || process.env.CLERK_SECRET_KEY || "startup_map_production_secure_encryption_key_2501";
+// Server-side encryption secret (derived from ENCRYPTION_SECRET or CLERK_SECRET_KEY env var)
+const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET || process.env.CLERK_SECRET_KEY;
 const ALGORITHM = "aes-256-gcm";
 
 function getEncryptionKey(): Buffer {
+  if (!ENCRYPTION_SECRET) {
+    throw new Error(
+      "CRITICAL SECURITY CONFIGURATION ERROR: ENCRYPTION_SECRET environment variable is not set."
+    );
+  }
   return crypto.createHash("sha256").update(ENCRYPTION_SECRET).digest();
 }
 
@@ -25,14 +30,14 @@ export function encryptData(text: string): string {
 
     return `${iv.toString("hex")}:${authTag}:${encrypted}`;
   } catch (err) {
-    console.error("Encryption error:", err);
-    return text;
+    console.error("Encryption failure:", err);
+    throw new Error("Failed to encrypt sensitive data payload");
   }
 }
 
 /**
  * Decrypts an AES-256-GCM encrypted payload (`iv:authTag:encryptedData`).
- * Returns plain text, or original text if not encrypted format.
+ * Returns plain text, or empty string on failed decryption.
  */
 export function decryptData(encryptedPayload: string): string {
   if (!encryptedPayload) return "";
@@ -40,7 +45,7 @@ export function decryptData(encryptedPayload: string): string {
 
   try {
     const parts = encryptedPayload.split(":");
-    if (parts.length !== 3) return encryptedPayload;
+    if (parts.length !== 3) return "";
 
     const [ivHex, authTagHex, encryptedHex] = parts;
     const key = getEncryptionKey();
@@ -55,7 +60,7 @@ export function decryptData(encryptedPayload: string): string {
     return decrypted;
   } catch (err) {
     console.error("Decryption error:", err);
-    return encryptedPayload;
+    return "";
   }
 }
 

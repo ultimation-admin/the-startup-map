@@ -86,12 +86,5 @@ export async function isAuthorizedAdmin(req: NextRequest): Promise<boolean> {
     console.error("Error in isAuthorizedAdmin:", err);
   }
 
-  // Emergency header fallback if passkey is set in environment
-  const passkeyHeader = (req.headers.get("x-admin-passkey") || "").trim().toUpperCase();
-  const configuredPasskey = (process.env.ADMIN_PASSKEY || "").trim().toUpperCase();
-  if (passkeyHeader && configuredPasskey && passkeyHeader === configuredPasskey) {
-    return true;
-  }
-
   return false;
 }
