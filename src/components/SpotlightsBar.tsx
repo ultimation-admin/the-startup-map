@@ -7,7 +7,6 @@ import {
   isSpotlightActive,
 } from "@/lib/spotlights";
 import { Listing } from "@/lib/db";
-import { PlusIcon, CheckIcon } from "./Icons";
 
 interface SpotlightsBarProps {
   userId: string;
@@ -265,9 +264,7 @@ export function SpotlightsBar({
                       {isUploading ? (
                         "Processing media..."
                       ) : mediaUrl ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                          <CheckIcon size={13} /> Media Attached
-                        </span>
+                        <span>Media Attached</span>
                       ) : (
                         "Choose Image or Video file..."
                       )}

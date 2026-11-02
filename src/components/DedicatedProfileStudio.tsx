@@ -1,35 +1,33 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Listing, CommunityPost } from "@/lib/db";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Listing, CommunityPost, PostReply } from "@/lib/db";
 import {
-  MapPinIcon,
-  CheckIcon,
-  UploadIcon,
-  RocketIcon,
-  UserIcon,
-  GlobeIcon,
   ArrowLeftIcon,
   EditIcon,
   TrashIcon,
-  PhoneIcon,
 } from "./Icons";
 import { CommunityFeedSkeleton } from "./Skeletons";
 import { EmptyFeedState } from "./EmptyFeedState";
 import { uploadFileToR2 } from "@/lib/uploadClient";
+import { ProfileArticles } from "./ProfileArticles";
 
 interface DedicatedProfileStudioProps {
   profile: Listing;
+  canManageProfile?: boolean;
+  canManageArticles?: boolean;
   onClose: () => void;
   onSelectListingOnMap?: (listing: Listing) => void;
   onProfileUpdated?: () => void;
   onOpenJobs?: (listing: Listing) => void;
 }
 
-type StudioTab = "posts" | "replies";
+type StudioTab = "posts" | "replies" | "articles";
 
 export function DedicatedProfileStudio({
   profile,
+  canManageProfile = false,
+  canManageArticles = false,
   onClose,
   onSelectListingOnMap,
   onProfileUpdated,
@@ -45,15 +43,15 @@ export function DedicatedProfileStudio({
   const [description, setDescription] = useState(profile.description || "");
   const [tweetUrl, setTweetUrl] = useState(profile.tweet_url || "");
   const [logoUrl, setLogoUrl] = useState(profile.logo_url || "");
-  const [fileName, setFileName] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Posts & Replies States
   const [profilePosts, setProfilePosts] = useState<CommunityPost[]>([]);
-  const [profileReplies, setProfileReplies] = useState<any[]>([]);
+  const [profileReplies, setProfileReplies] = useState<PostReply[]>([]);
   const [loadingContent, setLoadingContent] = useState(true);
 
   // Edit Post Inline State
@@ -62,8 +60,21 @@ export function DedicatedProfileStudio({
 
   const handle = (profile.type === "person" ? `p/${profile.slug}` : `s/${profile.slug}`).toLowerCase();
 
+  const changeStudioTab = (tab: StudioTab) => {
+    setActiveTab(tab);
+    const url = new URL(window.location.href);
+    if (tab === "posts") url.searchParams.delete("profileTab");
+    else url.searchParams.set("profileTab", tab);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  };
+
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("profileTab");
+    if (tab === "articles" || tab === "replies") setActiveTab(tab);
+  }, []);
+
   // Load Posts & Replies for this Profile Handle
-  const loadProfileContent = async () => {
+  const loadProfileContent = useCallback(async () => {
     setLoadingContent(true);
     try {
       const queryParams = new URLSearchParams({
@@ -83,7 +94,7 @@ export function DedicatedProfileStudio({
     } finally {
       setLoadingContent(false);
     }
-  };
+  }, [handle, profile.owner_id, profile.slug, profile.name]);
 
   useEffect(() => {
     setName(profile.name);
@@ -93,8 +104,15 @@ export function DedicatedProfileStudio({
     setTweetUrl(profile.tweet_url || "");
     setLogoUrl(profile.logo_url || "");
     setMessage(null);
-    loadProfileContent();
-  }, [profile]);
+  }, [profile.id]);
+
+  useEffect(() => {
+    void loadProfileContent();
+  }, [loadProfileContent]);
+
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -103,9 +121,10 @@ export function DedicatedProfileStudio({
         setMessage({ type: "error", text: "Image size exceeds 5MB." });
         return;
       }
-      setFileName(file.name);
       setSelectedFile(file);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       const previewUrl = URL.createObjectURL(file);
+      previewUrlRef.current = previewUrl;
       setLogoUrl(previewUrl);
     }
   };
@@ -142,7 +161,8 @@ export function DedicatedProfileStudio({
 
       setLogoUrl(savedLogoUrl);
       setSelectedFile(null);
-      setFileName(null);
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
       setMessage({ type: "success", text: "Profile details updated successfully." });
       setIsEditingProfile(false);
       onProfileUpdated?.();
@@ -288,7 +308,7 @@ export function DedicatedProfileStudio({
                 profile.initials
               )}
             </div>
-            <label
+            {canManageProfile && <label
               htmlFor="studio-logo-file"
               style={{
                 position: "absolute",
@@ -296,21 +316,24 @@ export function DedicatedProfileStudio({
                 right: "-2px",
                 background: "#0f172a",
                 color: "#ffffff",
-                borderRadius: "50%",
-                width: "20px",
-                height: "20px",
+                borderRadius: "999px",
+                minWidth: "32px",
+                height: "18px",
+                padding: "0 5px",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                fontSize: "9px",
+                fontWeight: 700,
                 cursor: "pointer",
                 boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
                 transition: "transform 0.15s ease",
               }}
-              title="Upload Avatar Image"
+              title="Change profile image"
             >
-              <UploadIcon size={10} />
-            </label>
-            <input id="studio-logo-file" type="file" accept="image/*" aria-label="Upload profile image (5MB max)" style={{ display: "none" }} onChange={handleFileUpload} />
+              Edit
+            </label>}
+            {canManageProfile && <input id="studio-logo-file" type="file" accept="image/*" aria-label="Upload profile image (5MB max)" style={{ display: "none" }} onChange={handleFileUpload} />}
           </div>
 
           {/* RIGHT: NAME, USERNAME, EDIT PROFILE BUTTON, DESCRIPTION, METADATA */}
@@ -323,8 +346,8 @@ export function DedicatedProfileStudio({
                     {name}
                   </h2>
                   {profile.type === "startup" ? (
-                    <span title="Startup profile" aria-label="Startup profile" style={{ color: "#f85900", display: "inline-flex" }}>
-                      <RocketIcon size={16} />
+                    <span title="Startup profile" style={{ color: "#a34418", fontSize: "9px", fontWeight: 800, letterSpacing: "0.07em", marginLeft: "3px" }}>
+                      STARTUP
                     </span>
                   ) : null}
                 </div>
@@ -340,13 +363,13 @@ export function DedicatedProfileStudio({
                   Jobs
                 </button>
               )}
-              <button
+              {canManageProfile && <button
                 type="button"
                 onClick={() => setIsEditingProfile((prev) => !prev)}
                 className={`btn-outline-pill ${isEditingProfile ? "active" : ""}`}
               >
                 {isEditingProfile ? "Cancel" : "Edit profile"}
-              </button>
+              </button>}
               </div>
             </div>
 
@@ -377,22 +400,15 @@ export function DedicatedProfileStudio({
               }}
             >
               {profile.city && (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <MapPinIcon size={14} />
-                  <span>{profile.city}, India</span>
-                </div>
+                <span>{profile.city}, India</span>
               )}
 
               {profile.sector && (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <RocketIcon size={14} />
-                  <span>{profile.sector}</span>
-                </div>
+                <span>{profile.sector}</span>
               )}
 
               {website && (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <GlobeIcon size={14} />
+                <div>
                   <a
                     href={website.startsWith("http") ? website : `https://${website}`}
                     target="_blank"
@@ -405,10 +421,7 @@ export function DedicatedProfileStudio({
               )}
 
               {phone && (
-                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <PhoneIcon size={14} />
-                  <span>{phone}</span>
-                </div>
+                <span>{phone}</span>
               )}
             </div>
           </div>
@@ -436,7 +449,7 @@ export function DedicatedProfileStudio({
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
+            <div className="profile-edit-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>FULL NAME / COMPANY</label>
                 <input
@@ -465,7 +478,6 @@ export function DedicatedProfileStudio({
                 type="url"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
-                required
                 className="input-form-field"
               />
             </div>
@@ -495,14 +507,14 @@ export function DedicatedProfileStudio({
 
 
 
-            <div style={{ display: "flex", gap: "12px", justifyContent: "space-between", alignItems: "center" }}>
-              <button
+            <div className="profile-edit-actions" style={{ display: "flex", gap: "12px", justifyContent: "space-between", alignItems: "center" }}>
+              {canManageProfile && <button
                 type="submit"
                 disabled={saving}
                 className="btn-solid-emerald"
               >
-                <CheckIcon size={16} /> {saving ? "Saving..." : "Save Settings"}
-              </button>
+                {saving ? "Saving..." : "Save Settings"}
+              </button>}
               <button
                 type="button"
                 onClick={handleDeleteProfile}
@@ -542,7 +554,7 @@ export function DedicatedProfileStudio({
           >
             <button
               type="button"
-              onClick={() => setActiveTab("posts")}
+              onClick={() => changeStudioTab("posts")}
               style={{
                 padding: "12px 0",
                 border: "none",
@@ -573,7 +585,7 @@ export function DedicatedProfileStudio({
 
             <button
               type="button"
-              onClick={() => setActiveTab("replies")}
+              onClick={() => changeStudioTab("replies")}
               style={{
                 padding: "12px 0",
                 border: "none",
@@ -599,6 +611,27 @@ export function DedicatedProfileStudio({
                     borderRadius: "9999px",
                   }}
                 />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => changeStudioTab("articles")}
+              style={{
+                padding: "12px 0",
+                border: "none",
+                background: "transparent",
+                color: activeTab === "articles" ? "#0f172a" : "#536471",
+                fontWeight: activeTab === "articles" ? 800 : 600,
+                fontSize: "14.5px",
+                cursor: "pointer",
+                position: "relative",
+                transition: "color 0.15s ease",
+              }}
+            >
+              <span>Articles</span>
+              {activeTab === "articles" && (
+                <span style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "4px", background: "#f85900", borderRadius: "9999px" }} />
               )}
             </button>
           </div>
@@ -739,6 +772,8 @@ export function DedicatedProfileStudio({
               )}
             </div>
           )}
+
+          {activeTab === "articles" && <ProfileArticles key={profile.id} profile={profile} canManageArticles={canManageArticles} />}
         </>
       )}
     </div>

@@ -1,3 +1,7 @@
-import { AppTabPage } from "@/components/AppTabPage";
+import { redirect } from "next/navigation";
+
 export const dynamic = "force-dynamic";
-export default function Page() { return <AppTabPage tab="map" />; }
+
+export default function Page() {
+  redirect("/explore");
+}

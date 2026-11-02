@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { SpotlightStory } from "@/lib/spotlights";
-import { RocketIcon, UserIcon, SparklesIcon, MapPinIcon } from "./Icons";
 
 interface InlineSpotlightStoryPlayerProps {
   spotlights: SpotlightStory[];
@@ -80,9 +79,7 @@ export function InlineSpotlightStoryPlayer({
           )}
           <div>
             <h3>{story.name}</h3>
-            <span className="inline-story-location" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-              <MapPinIcon size={12} /> {story.city}, India
-            </span>
+            <span className="inline-story-location">{story.city}, India</span>
           </div>
         </div>
         <button type="button" className="inline-story-close-btn" onClick={onClose} title="Close Story">
@@ -115,8 +112,7 @@ export function InlineSpotlightStoryPlayer({
         {/* BOTTOM OVERLAY INFO */}
         <div className="inline-story-overlay-content">
           <div className="inline-story-badge">
-            {story.type === "startup" ? <RocketIcon size={12} /> : <UserIcon size={12} />}
-            <span>24H SPOTLIGHT AD</span>
+            <span>{story.type === "startup" ? "STARTUP SPOTLIGHT" : "FOUNDER SPOTLIGHT"}</span>
           </div>
 
           <p className="inline-story-pitch-text">&ldquo;{story.tagline}&rdquo;</p>
@@ -132,7 +128,7 @@ export function InlineSpotlightStoryPlayer({
               rel="noopener noreferrer"
               className="inline-story-cta-btn"
             >
-              Visit Website <SparklesIcon size={14} />
+              Visit Website
             </a>
           )}
         </div>

@@ -109,6 +109,30 @@ export interface Community {
   members_count: number;
 }
 
+export type ArticleBlock =
+  | { id: string; type: "text"; text: string }
+  | { id: string; type: "paragraph"; text: string }
+  | { id: string; type: "h1"; text: string }
+  | { id: string; type: "h2"; text: string }
+  | { id: string; type: "h3"; text: string }
+  | { id: string; type: "image"; url: string; alt: string }
+  | { id: string; type: "link"; url: string; label: string };
+
+export interface ProfileArticle {
+  id: string;
+  slug: string;
+  profile_id: string;
+  owner_id: string;
+  title: string;
+  blocks: ArticleBlock[];
+  created_at: string;
+  updated_at: string;
+  profile_name: string;
+  profile_slug: string;
+  profile_type: ListingType;
+  profile_logo?: string;
+}
+
 // =========================================================================
 // Constants
 // =========================================================================
@@ -246,6 +270,122 @@ export async function fetchListingBySlug(type: string, slug: string): Promise<Li
     console.warn(`fetchListingBySlug '${slug}' D1 query error:`, err);
     return null;
   }
+}
+
+let profileArticlesSchema: Promise<void> | null = null;
+
+async function ensureProfileArticlesSchema() {
+  if (!profileArticlesSchema) {
+    profileArticlesSchema = (async () => {
+      await d1Execute(`CREATE TABLE IF NOT EXISTS profile_articles (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        profile_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        blocks TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (profile_id) REFERENCES listings(id) ON DELETE CASCADE
+      )`);
+      await d1Execute("CREATE INDEX IF NOT EXISTS idx_profile_articles_profile ON profile_articles(profile_id, updated_at DESC)");
+    })();
+  }
+  await profileArticlesSchema;
+}
+
+function rowToProfileArticle(row: Record<string, unknown>): ProfileArticle {
+  let blocks: ArticleBlock[] = [];
+  try {
+    const parsed = typeof row.blocks === "string" ? JSON.parse(row.blocks) : row.blocks;
+    if (Array.isArray(parsed)) blocks = parsed as ArticleBlock[];
+  } catch {
+    blocks = [];
+  }
+  const logo = row.profile_logo ? getPublicMediaUrl(String(row.profile_logo)) || undefined : undefined;
+  return {
+    id: String(row.id),
+    slug: String(row.slug),
+    profile_id: String(row.profile_id),
+    owner_id: String(row.owner_id),
+    title: String(row.title),
+    blocks,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    profile_name: String(row.profile_name || "Startup Map member"),
+    profile_slug: String(row.profile_slug || ""),
+    profile_type: String(row.profile_type || "startup") as ListingType,
+    profile_logo: logo,
+  };
+}
+
+const PROFILE_ARTICLE_SELECT = `SELECT a.*, l.name AS profile_name, l.slug AS profile_slug,
+  l.type AS profile_type, l.logo_url AS profile_logo
+  FROM profile_articles a JOIN listings l ON l.id = a.profile_id`;
+
+export async function fetchProfileArticles(profileId: string, ownerId?: string): Promise<ProfileArticle[]> {
+  await ensureProfileArticlesSchema();
+  const rows = await d1Query<Record<string, unknown>>(
+    `${PROFILE_ARTICLE_SELECT} WHERE a.profile_id = ?${ownerId ? " AND a.owner_id = ?" : ""} ORDER BY a.updated_at DESC`,
+    ownerId ? [profileId, ownerId] : [profileId],
+    { cache: "no-store" }
+  );
+  return rows.map(rowToProfileArticle);
+}
+
+export async function fetchProfileArticleBySlug(slug: string): Promise<ProfileArticle | null> {
+  await ensureProfileArticlesSchema();
+  const row = await d1QueryFirst<Record<string, unknown>>(
+    `${PROFILE_ARTICLE_SELECT} WHERE a.slug = ? LIMIT 1`,
+    [slug],
+    { cache: "no-store" }
+  );
+  return row ? rowToProfileArticle(row) : null;
+}
+
+export async function createProfileArticle(input: {
+  profile: Listing;
+  title: string;
+  blocks: ArticleBlock[];
+}): Promise<ProfileArticle | null> {
+  await ensureProfileArticlesSchema();
+  const id = crypto.randomUUID();
+  const normalizedTitle = input.title.trim();
+  const titleSlug = normalizedTitle
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 70) || "article";
+  const slug = `${titleSlug}-${id.slice(0, 8)}`;
+  const now = new Date().toISOString();
+  await d1Execute(
+    "INSERT INTO profile_articles (id, slug, profile_id, owner_id, title, blocks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [id, slug, input.profile.id, input.profile.owner_id, normalizedTitle, JSON.stringify(input.blocks), now, now]
+  );
+  return fetchProfileArticleBySlug(slug);
+}
+
+export async function updateProfileArticle(input: {
+  slug: string;
+  ownerId: string;
+  title: string;
+  blocks: ArticleBlock[];
+}): Promise<ProfileArticle | null> {
+  await ensureProfileArticlesSchema();
+  await d1Execute(
+    "UPDATE profile_articles SET title = ?, blocks = ?, updated_at = ? WHERE slug = ? AND owner_id = ?",
+    [input.title.trim(), JSON.stringify(input.blocks), new Date().toISOString(), input.slug, input.ownerId]
+  );
+  const article = await fetchProfileArticleBySlug(input.slug);
+  return article?.owner_id === input.ownerId ? article : null;
+}
+
+export async function deleteProfileArticle(slug: string, ownerId: string): Promise<boolean> {
+  await ensureProfileArticlesSchema();
+  const result = await d1Execute("DELETE FROM profile_articles WHERE slug = ? AND owner_id = ?", [slug, ownerId]);
+  return result.changes > 0;
 }
 
 export function getProfileHandle(type: string, name: string): string {
@@ -743,7 +883,7 @@ export async function fetchCommunityPosts(filters?: {
         reposts_count: repostsByPostId.get(postId)?.length || 0,
         reposted_by: repostsByPostId.get(postId) || [],
         views_count: Number(row.views_count),
-        replies_count: Number(row.replies_count),
+        replies_count: Math.max(Number(row.replies_count || 0), (repliesByPostId.get(postId) || []).length),
         liked_by: likesByPostId.get(postId) || [],
         replies: repliesByPostId.get(postId) || [],
         created_at: String(row.created_at),
@@ -1039,6 +1179,32 @@ export async function createPostReply(reply: {
     parent_reply_id: reply.parent_reply_id,
     reply_to_user: reply.reply_to_user,
   };
+}
+
+export async function deletePostReply(replyId: string, userId: string): Promise<boolean> {
+  try {
+    const existing = await d1QueryFirst<{ post_id: string; user_id: string }>(
+      "SELECT post_id, user_id FROM post_replies WHERE id = ?",
+      [replyId]
+    );
+    if (!existing || existing.user_id !== userId) {
+      return false;
+    }
+    await d1Batch([
+      {
+        sql: "DELETE FROM post_replies WHERE id = ? OR parent_reply_id = ?",
+        params: [replyId, replyId],
+      },
+      {
+        sql: "UPDATE community_posts SET replies_count = MAX(0, replies_count - 1) WHERE id = ?",
+        params: [existing.post_id],
+      },
+    ]);
+    return true;
+  } catch (err) {
+    console.error("deletePostReply error:", err);
+    return false;
+  }
 }
 
 export async function incrementPostViews(postId: string): Promise<void> {

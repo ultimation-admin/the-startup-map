@@ -77,7 +77,8 @@ function getRestConfig() {
 
 async function restQuery<T = Record<string, unknown>>(
   sql: string,
-  params: unknown[] = []
+  params: unknown[] = [],
+  noStore = false
 ): Promise<QueryResult<T>> {
   const config = getRestConfig();
   if (!config) {
@@ -87,15 +88,20 @@ async function restQuery<T = Record<string, unknown>>(
     );
   }
 
-  const res = await fetch(config.url, {
+  const fetchOptions: RequestInit & { next?: { revalidate: number } } = {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ sql, params }),
-    next: sql.trim().toUpperCase().startsWith("SELECT") ? { revalidate: 10 } : undefined,
-  });
+    ...(noStore
+      ? { cache: "no-store" as const }
+      : sql.trim().toUpperCase().startsWith("SELECT")
+        ? { next: { revalidate: 10 } }
+        : {}),
+  };
+  const res = await fetch(config.url, fetchOptions);
 
   if (!res.ok) {
     const text = await res.text();
@@ -138,7 +144,8 @@ async function restBatch(
  */
 export async function d1Query<T = Record<string, unknown>>(
   sql: string,
-  params: unknown[] = []
+  params: unknown[] = [],
+  options: { cache?: "default" | "no-store" } = {}
 ): Promise<T[]> {
   try {
     const db = await getNativeDb();
@@ -150,7 +157,7 @@ export async function d1Query<T = Record<string, unknown>>(
       return (results || []) as T[];
     }
 
-    const result = await restQuery<T>(sql, params);
+    const result = await restQuery<T>(sql, params, options.cache === "no-store");
     return result?.results || [];
   } catch (err) {
     console.warn("d1Query fallback (D1 unconfigured or query failed):", err);
@@ -163,7 +170,8 @@ export async function d1Query<T = Record<string, unknown>>(
  */
 export async function d1QueryFirst<T = Record<string, unknown>>(
   sql: string,
-  params: unknown[] = []
+  params: unknown[] = [],
+  options: { cache?: "default" | "no-store" } = {}
 ): Promise<T | null> {
   try {
     const db = await getNativeDb();
@@ -174,7 +182,7 @@ export async function d1QueryFirst<T = Record<string, unknown>>(
       return await bound.first();
     }
 
-    const result = await restQuery<T>(sql, params);
+    const result = await restQuery<T>(sql, params, options.cache === "no-store");
     return result?.results?.[0] ?? null;
   } catch (err) {
     console.warn("d1QueryFirst fallback (D1 unconfigured or query failed):", err);

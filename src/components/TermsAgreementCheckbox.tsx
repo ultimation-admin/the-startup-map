@@ -31,8 +31,6 @@ export function TermsAgreementCheckbox({
         I have read and agree to the{" "}
         <Link
           href="/terms-of-service"
-          target="_blank"
-          rel="noopener noreferrer"
           className="font-bold text-[#f85900] hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
@@ -41,8 +39,6 @@ export function TermsAgreementCheckbox({
         and{" "}
         <Link
           href="/privacy-policy"
-          target="_blank"
-          rel="noopener noreferrer"
           className="font-bold text-[#f85900] hover:underline"
           onClick={(e) => e.stopPropagation()}
         >

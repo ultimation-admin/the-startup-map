@@ -29,8 +29,9 @@ import { ActivityPage } from "@/components/ActivityPage";
 import { SpotlightStory } from "@/lib/spotlights";
 import { JobPostingsModal } from "@/components/JobPostingsModal";
 import { FeedOnboardingModal } from "@/components/FeedOnboardingModal";
+import { SignInHeaderIllustration, SignUpHeaderIllustration } from "@/components/AuthIllustrations";
 
-import { SearchIcon, SearchXIcon, SparklesIcon, MapPinIcon, UserIcon, RocketIcon } from "@/components/Icons";
+import { SearchIcon, MapPinIcon } from "@/components/Icons";
 import {
   CityDropdownSelector,
   CITIES,
@@ -122,11 +123,12 @@ interface HomeClientProps {
     logo_url: string | null;
     favicon_url: string | null;
   };
-  initialTab?: "home" | "search" | "map" | "activity" | "profile";
+  initialTab?: "home" | "explore" | "search" | "map" | "activity" | "profile";
 }
 
 export default function HomeClient({ initialBranding, initialTab = "home" }: HomeClientProps) {
   const tab = initialTab;
+  const isExploreTab = tab === "explore" || tab === "map" || tab === "search";
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
     setIsMounted(true);
@@ -1230,7 +1232,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
   );
 
   return (
-    <main className={`canvas tab-${tab} drawer-${mobileDrawerState}${tab === "map" && leftView === "studio" ? " map-detail-open" : ""}`}>
+    <main className={`canvas tab-${tab} ${isExploreTab ? "tab-map tab-explore" : ""} drawer-${mobileDrawerState}${isExploreTab && leftView === "studio" ? " map-detail-open" : ""}`}>
       {isMounted && <ClerkUserSubscriber onAuthChange={handleAuthChange} />}
       {renderHeader(true)}
       {/* CONTROLS SIDEBAR / FEED CONTENT */}
@@ -1272,9 +1274,42 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
                 onNavigate={(newIdx) => setActiveSpotlightIndex(newIdx)}
               />
             )}
-            {tab === "search" && leftView !== "studio" && <SearchPage listings={listings} onSelectListing={(item) => { setSelected(item); setActiveProfileForStudio(item); navigateTo("studio", item); }} />}
+            {isExploreTab && leftView !== "studio" && (
+              <SearchPage
+                listings={listings}
+                selectedListingId={selected?.id || null}
+                query={query}
+                onQueryChange={setQuery}
+                selectedCategory={selectedType === "Startups" ? "Startups" : selectedType === "People" ? "People" : "All"}
+                onCategoryChange={(cat) => {
+                  if (cat === "Startups") handleTypeSelect("Startups");
+                  else if (cat === "People") handleTypeSelect("People");
+                  else handleTypeSelect("All Types");
+                }}
+                onSelectListing={(item) => {
+                  handleSelectListing(item);
+                  map?.flyTo({
+                    center: [item.longitude, item.latitude],
+                    zoom: 13.5,
+                    pitch: 45,
+                    bearing: 0,
+                    duration: 700,
+                  });
+                  if (typeof window !== "undefined" && window.innerWidth < 768) {
+                    setMobileTab("map");
+                  }
+                }}
+                onOpenStudio={(item) => {
+                  setSelected(item);
+                  setActiveProfileForStudio(item);
+                  navigateTo("studio", item);
+                }}
+                mobileTab={mobileTab}
+                onToggleMobileTab={setMobileTab}
+              />
+            )}
             {tab === "activity" && <ActivityPage userId={clerkUser?.id || "demo_user"} isSignedIn={!!isSignedIn} onRequireAuth={() => navigateTo("sign-in")} />}
-            {tab === "map" && leftView !== "studio" && <section className="map-results-list"><header><p className="eyebrow">EXPLORE BY LOCATION</p><h1>Map</h1><p>{filtered.length} profiles in this view</p></header>{filtered.map((item) => <button key={item.id} type="button" className="map-result-row" onClick={() => { handleSelectListing(item); map?.flyTo({ center: [item.longitude, item.latitude], zoom: 12.5, duration: 700 }); }}><span className="search-result-avatar">{item.logo_url ? <img src={item.logo_url} alt="" /> : item.initials}</span><span><strong>{item.name}</strong><small>{item.city} · {item.sector}</small></span><span aria-hidden="true">→</span></button>)}</section>}
+
             {tab === "home" && (leftView === "explore" || leftView === "feed" || leftView === "sign-in" || leftView === "sign-up") && (
               <CommunityFeed
                 userId={clerkUser?.id || "demo_user"}
@@ -1294,6 +1329,8 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
             {leftView === "studio" && activeProfileForStudio && (
               <DedicatedProfileStudio
                 profile={activeProfileForStudio}
+                canManageProfile={Boolean(clerkUser?.id && clerkUser.id === activeProfileForStudio.owner_id)}
+                canManageArticles={Boolean(clerkUser?.id && clerkUser.id === activeProfileForStudio.owner_id)}
                 onClose={() => navigateTo("explore")}
                 onSelectListingOnMap={(item) => {
                   setSelected(item);
@@ -1312,6 +1349,8 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
             {(tab === "profile" || leftView === "profile") && (
               <UserProfilePanel
                 userId={clerkUser?.id || "demo_user"}
+                isSignedIn={Boolean(isSignedIn)}
+                onRequireAuth={() => navigateTo("sign-in")}
                 userEmail={clerkUser?.primaryEmailAddress?.emailAddress || "founder@startupmap.in"}
                 userInitials={
                   clerkUser?.firstName
@@ -1353,7 +1392,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
         </aside>
 
       {/* RIGHT: Map fills the panel */}
-      {tab === "map" && <div className={`map-panel ${mobileTab === "map" ? "mobile-visible" : "mobile-hidden"}`}>
+      {isExploreTab && <div className={`map-panel ${mobileTab === "map" ? "mobile-visible" : "mobile-hidden"}`}>
         {/* MOBILE FLOATING PIN PREVIEW CARD */}
         {selected && (
           <div className="mobile-map-selected-card mobile-only">
@@ -1446,9 +1485,9 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
               aria-label="Map View"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-                <line x1="9" y1="3" x2="9" y2="18" />
-                <line x1="15" y1="6" x2="15" y2="21" />
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88" fill="currentColor" />
+
               </svg>
             </button>
           </div>
@@ -1836,7 +1875,12 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
             </div>
 
             {/* Editorial Greeting */}
-            <div className="mb-2.5 text-center">
+            <div className="mb-2 text-center flex flex-col items-center">
+              {leftView === "sign-in" ? (
+                <SignInHeaderIllustration className="mb-1" />
+              ) : (
+                <SignUpHeaderIllustration className="mb-1" />
+              )}
               <h2 id="auth-modal-title" className="text-[17px] font-bold tracking-tight text-black">
                 {leftView === "sign-in" ? "Welcome back" : "Join The Startup Map"}
               </h2>
@@ -1894,11 +1938,11 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
           onClick={() => setMobileTab("map")}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-            <line x1="9" y1="3" x2="9" y2="18" />
-            <line x1="15" y1="6" x2="15" y2="21" />
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88" fill="currentColor" />
+
           </svg>
-          <span>Map</span>
+          <span>Explore</span>
         </button>
 
         <button

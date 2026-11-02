@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DEFAULT_TERMS_OF_SERVICE } from "@/lib/legalContent";
 
 export default function TermsOfServicePage() {
+  const router = useRouter();
   const [content, setContent] = useState<string>(DEFAULT_TERMS_OF_SERVICE);
   const [loading, setLoading] = useState(true);
 
@@ -46,12 +48,19 @@ export default function TermsOfServicePage() {
       <main className="max-w-4xl mx-auto px-6 py-8">
         {/* Back Button on top of page above card */}
         <div className="mb-6">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#e04f00] hover:underline bg-white border border-black/5 shadow-xs px-4 py-2 rounded-full transition-all"
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.history.length > 1) {
+                router.back();
+              } else {
+                router.push("/");
+              }
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#e04f00] hover:underline bg-white border border-black/5 shadow-xs px-4 py-2 rounded-full transition-all cursor-pointer"
           >
             ← Back
-          </Link>
+          </button>
         </div>
 
         <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-black/5">

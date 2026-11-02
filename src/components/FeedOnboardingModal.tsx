@@ -1,22 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import {
-  SparklesIcon,
-  CheckIcon,
-  UserGroupIcon,
-  FlameIcon,
-  BotIcon,
-  ZapIcon,
-  ShoppingBagIcon,
-  CarIcon,
-  HandshakeIcon,
-  BanknoteIcon,
-  RocketIcon,
-  WrenchIcon,
-  ActivityIcon,
-  GamepadIcon,
-} from "./Icons";
 
 interface FeedOnboardingModalProps {
   isOpen: boolean;
@@ -26,16 +10,16 @@ interface FeedOnboardingModalProps {
 }
 
 export const INTEREST_TOPICS = [
-  { id: "genai", label: "AI & GenAI", icon: BotIcon, desc: "LLMs, Agents & Neural Nets", color: "#8b5cf6" },
-  { id: "saas", label: "SaaS & Enterprise", icon: ZapIcon, desc: "B2B Software & Cloud", color: "#d97706" },
-  { id: "d2c", label: "D2C & E-Commerce", icon: ShoppingBagIcon, desc: "Consumer Brands & Retail", color: "#db2777" },
-  { id: "ev_mobility", label: "EV & Mobility", icon: CarIcon, desc: "Electric Vehicles & Tech", color: "#0891b2" },
-  { id: "co_founders", label: "Co-Founders & Hiring", icon: HandshakeIcon, desc: "Talent & Co-Founder Matching", color: "#059669" },
-  { id: "vc_deals", label: "VC Deals & Funding", icon: BanknoteIcon, desc: "Angel Rounds & Term Sheets", color: "#16a34a" },
-  { id: "growth", label: "Growth & Marketing", icon: RocketIcon, desc: "User Acquisition & Distribution", color: "#ea580c" },
-  { id: "engineering", label: "Engineering & Tech", icon: WrenchIcon, desc: "Architecture & Code", color: "#4f46e5" },
-  { id: "healthtech", label: "HealthTech & Bio", icon: ActivityIcon, desc: "Digital Health & Biotech", color: "#dc2626" },
-  { id: "gaming", label: "Gaming & Web3", icon: GamepadIcon, desc: "Interactive & Emerging Tech", color: "#c026d3" },
+  { id: "genai", label: "AI & GenAI", desc: "LLMs, Agents & Neural Nets" },
+  { id: "saas", label: "SaaS & Enterprise", desc: "B2B Software & Cloud" },
+  { id: "d2c", label: "D2C & E-Commerce", desc: "Consumer Brands & Retail" },
+  { id: "ev_mobility", label: "EV & Mobility", desc: "Electric Vehicles & Tech" },
+  { id: "co_founders", label: "Co-Founders & Hiring", desc: "Talent & Co-Founder Matching" },
+  { id: "vc_deals", label: "VC Deals & Funding", desc: "Angel Rounds & Term Sheets" },
+  { id: "growth", label: "Growth & Marketing", desc: "User Acquisition & Distribution" },
+  { id: "engineering", label: "Engineering & Tech", desc: "Architecture & Code" },
+  { id: "healthtech", label: "HealthTech & Bio", desc: "Digital Health & Biotech" },
+  { id: "gaming", label: "Gaming & Web3", desc: "Interactive & Emerging Tech" },
 ];
 
 export const DEFAULT_COMMUNITIES = [
@@ -130,9 +114,7 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete, onDismiss }: F
             </span>
           </div>
 
-          <span className="twitter-x-badge">
-            <SparklesIcon size={13} /> Profile Feed Setup
-          </span>
+          <span className="twitter-x-badge">FEED PREFERENCES</span>
         </div>
 
         {/* STEP 1: CHOOSE INTERESTS */}
@@ -150,9 +132,8 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete, onDismiss }: F
             </div>
 
             <div className="interests-grid">
-              {INTEREST_TOPICS.map((topic) => {
+              {INTEREST_TOPICS.map((topic, index) => {
                 const isSelected = selectedInterests.includes(topic.id);
-                const IconComponent = topic.icon;
                 return (
                   <button
                     key={topic.id}
@@ -160,21 +141,12 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete, onDismiss }: F
                     className={`interest-chip-btn ${isSelected ? "selected" : ""}`}
                     onClick={() => toggleInterest(topic.id)}
                   >
-                    <span
-                      className="chip-icon"
-                      style={{
-                        color: topic.color,
-                      }}
-                    >
-                      <IconComponent size={20} />
-                    </span>
+                    <span className="chip-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
                     <div className="chip-text">
                       <b>{topic.label}</b>
                       <small>{topic.desc}</small>
                     </div>
-                    <span className="chip-check-wrap">
-                      {isSelected ? <CheckIcon size={14} /> : "+"}
-                    </span>
+                    <span className="chip-selection-state">{isSelected ? "Selected" : ""}</span>
                   </button>
                 );
               })}
@@ -222,9 +194,7 @@ export function FeedOnboardingModal({ isOpen, userId, onComplete, onDismiss }: F
                       onClick={() => toggleCommunity(c.id)}
                     >
                       {isJoined ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                          <CheckIcon size={13} /> Joined
-                        </span>
+                        "Joined"
                       ) : (
                         "+ Join"
                       )}

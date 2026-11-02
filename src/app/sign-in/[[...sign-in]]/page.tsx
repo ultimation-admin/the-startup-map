@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { SignIn } from "@clerk/nextjs";
+import { SignInIllustration, SignInHeaderIllustration } from "@/components/AuthIllustrations";
 
 export default function SignInPage() {
   const [isMounted, setIsMounted] = useState(false);
@@ -13,49 +14,122 @@ export default function SignInPage() {
 
   if (!isMounted) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-black p-4">
+      <div className="flex justify-center items-center min-h-screen bg-[#090D14] p-4">
         <div className="w-[360px] h-[400px] bg-white rounded-[24px] animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col justify-center items-center min-h-screen bg-black p-4 sm:p-6 relative overflow-hidden">
-      {/* Floating Back Button */}
-      <Link
-        href="/"
-        className="absolute top-6 left-6 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white/90 bg-white/10 hover:bg-white/15 border border-white/15 rounded-full shadow-sm backdrop-blur-md transition-all active:scale-95 z-20"
-      >
-        ← Back to Map
-      </Link>
+    <div className="min-h-screen bg-[#090D14] text-white flex flex-col justify-between relative overflow-hidden">
+      {/* Subtle ambient background glow */}
+      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-[#f85900]/10 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-10 right-10 w-[400px] h-[400px] bg-[#3b82f6]/5 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Card container strictly per DESIGN.md */}
-      <div className="auth-modal-card z-10">
-        {/* Chrome Navigation: Segmented Switcher */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="inline-flex items-center p-1 bg-[#F0F2F5] rounded-full text-xs font-semibold">
-            <span className="py-1 px-3.5 rounded-full bg-white text-black shadow-xs font-semibold">
-              Sign In
-            </span>
-            <Link
-              href="/sign-up"
-              className="py-1 px-3.5 rounded-full text-[#5B6368] hover:text-black font-medium transition-colors"
-            >
-              Create Account
-            </Link>
+      {/* Top Bar with Brand & Back Link */}
+      <header className="relative z-20 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto w-full">
+        <Link href="/" className="inline-flex items-center gap-2.5 group">
+          <span className="w-8 h-8 rounded-xl bg-[#f85900] text-white flex items-center justify-center font-bold text-sm shadow-md shadow-[#f85900]/30 transition-transform group-hover:scale-105">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M4 6.5 12 3l8 3.5v11L12 21l-8-3.5v-11Z" />
+              <path d="m4 6.5 8 3.5 8-3.5M12 10v11" />
+            </svg>
+          </span>
+          <span className="font-bold text-base tracking-tight text-white/95">The Startup Map</span>
+        </Link>
+
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white/90 bg-white/10 hover:bg-white/15 border border-white/15 rounded-full shadow-sm backdrop-blur-md transition-all active:scale-95"
+        >
+          ← Back to Map
+        </Link>
+      </header>
+
+      {/* Main Content: Split layout on desktop, clean centered card on mobile */}
+      <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-6 sm:px-6">
+        <div className="w-full max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          
+          {/* Left Column (Desktop Illustration & Value Prop) */}
+          <div className="hidden lg:flex lg:col-span-7 flex-col justify-center pr-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-[#f85900] mb-4 w-fit">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#f85900] animate-pulse" />
+              Ecosystem Connectivity
+            </div>
+
+            <h1 className="text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-tight mb-3">
+              Welcome back to <br />
+              <span className="text-[#f85900]">India’s startup network.</span>
+            </h1>
+
+            <p className="text-sm text-slate-400 max-w-md leading-relaxed mb-6">
+              Track real-time ecosystem updates, discover new ventures in your city, and engage with builders across tech hubs.
+            </p>
+
+            {/* Custom SVG Vector Illustration */}
+            <div className="relative max-w-lg">
+              <SignInIllustration />
+            </div>
+
+            {/* Feature Highlights */}
+            <div className="grid grid-cols-3 gap-3 mt-4 max-w-lg">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="block text-base font-bold text-white">12+</span>
+                <span className="text-[11px] text-slate-400">Startup Cities</span>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="block text-base font-bold text-white">3,000+</span>
+                <span className="text-[11px] text-slate-400">Mapped Startups</span>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
+                <span className="block text-base font-bold text-white">Daily</span>
+                <span className="text-[11px] text-slate-400">Founder Stream</span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Editorial Greeting */}
-        <div className="mb-3 text-center">
-          <h1 className="text-[18px] font-bold tracking-tight text-black">Welcome back</h1>
-          <p className="text-xs text-[#5B6368] mt-0.5">Enter your email to continue</p>
-        </div>
+          {/* Right Column: Card container strictly per DESIGN.md */}
+          <div className="w-full lg:col-span-5 flex justify-center">
+            <div className="auth-modal-card w-full max-w-[380px] shadow-2xl">
+              {/* Chrome Navigation: Segmented Switcher */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="inline-flex items-center p-1 bg-[#F0F2F5] rounded-full text-xs font-semibold">
+                  <span className="py-1 px-3.5 rounded-full bg-white text-black shadow-xs font-semibold">
+                    Sign In
+                  </span>
+                  <Link
+                    href="/sign-up"
+                    className="py-1 px-3.5 rounded-full text-[#5B6368] hover:text-black font-medium transition-colors"
+                  >
+                    Create Account
+                  </Link>
+                </div>
+              </div>
 
-        <div className="auth-modal-content">
-          <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" forceRedirectUrl="/" fallbackRedirectUrl="/" />
+              {/* Mobile / Tablet Compact Illustration */}
+              <div className="lg:hidden flex justify-center mb-1">
+                <SignInHeaderIllustration />
+              </div>
+
+              {/* Editorial Greeting */}
+              <div className="mb-3 text-center">
+                <h2 className="text-[18px] font-bold tracking-tight text-black">Welcome back</h2>
+                <p className="text-xs text-[#5B6368] mt-0.5">Enter your email to continue</p>
+              </div>
+
+              <div className="auth-modal-content">
+                <SignIn path="/sign-in" routing="path" signUpUrl="/sign-up" forceRedirectUrl="/" fallbackRedirectUrl="/" />
+              </div>
+            </div>
+          </div>
+
         </div>
-      </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="relative z-10 py-4 text-center text-xs text-slate-500">
+        © {new Date().getFullYear()} The Startup Map. Made for people building what’s next.
+      </footer>
     </div>
   );
 }

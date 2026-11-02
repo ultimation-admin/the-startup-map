@@ -2,15 +2,6 @@
 
 import React, { useState } from "react";
 import { Listing } from "@/lib/db";
-import {
-  RocketIcon,
-  UserIcon,
-  MapPinIcon,
-  SparklesIcon,
-  AlertTriangleIcon,
-  CheckIcon,
-  UploadIcon,
-} from "./Icons";
 import { TermsAgreementCheckbox } from "./TermsAgreementCheckbox";
 import { uploadFileToR2 } from "@/lib/uploadClient";
 
@@ -227,7 +218,7 @@ export function AddListingForm({
               setError(null);
             }}
           >
-            <RocketIcon size={13} /> Startup
+            Startup
           </button>
           <button
             type="button"
@@ -237,15 +228,12 @@ export function AddListingForm({
               setError(null);
             }}
           >
-            <UserIcon size={13} /> People
+            People
           </button>
         </div>
 
         <div className={`location-picker-box compact-location-box ${pickedCoords ? "pinned" : ""}`}>
           <div className="location-info">
-            <span className="location-icon">
-              <MapPinIcon size={14} />
-            </span>
             <div className="location-text">
               <b>Map Location Pin *</b>
               <p>
@@ -270,7 +258,7 @@ export function AddListingForm({
       <form onSubmit={handleSubmit} className="inline-form compact-form grid-form-layout">
         {error && (
           <div className="form-error-alert grid-col-full" role="alert">
-            <AlertTriangleIcon size={14} /> {error}
+            {error}
           </div>
         )}
 
@@ -368,7 +356,6 @@ export function AddListingForm({
               </label>
               <div className="custom-file-picker-row">
                 <label htmlFor="upload-logo-input" className="choose-file-btn">
-                  <UploadIcon size={13} />
                   <span>{logoUrl ? "Change Logo" : "Choose File"}</span>
                 </label>
                 <input
@@ -383,7 +370,7 @@ export function AddListingForm({
                 {logoUrl ? (
                   <div className="inline-uploaded-logo">
                     <img src={logoUrl} alt="Logo Preview" />
-                    <span>Uploaded <CheckIcon size={12} /></span>
+                    <span>Uploaded</span>
                   </div>
                 ) : (
                   <span className="file-name-display">{fileName || "No file selected"}</span>
@@ -513,7 +500,6 @@ export function AddListingForm({
               </label>
               <div className="custom-file-picker-row">
                 <label htmlFor="profile-pic-input" className="choose-file-btn">
-                  <UploadIcon size={13} />
                   <span>{logoUrl ? "Change Photo" : "Choose File"}</span>
                 </label>
                 <input
@@ -528,7 +514,7 @@ export function AddListingForm({
                 {logoUrl ? (
                   <div className="inline-uploaded-logo">
                     <img src={logoUrl} alt="Profile Preview" />
-                    <span>Uploaded <CheckIcon size={12} /></span>
+                    <span>Uploaded</span>
                   </div>
                 ) : (
                   <span className="file-name-display">{fileName || "No file selected"}</span>

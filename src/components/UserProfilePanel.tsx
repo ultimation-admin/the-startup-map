@@ -1,23 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Listing } from "@/lib/db";
 import { DedicatedProfileStudio } from "./DedicatedProfileStudio";
 import { ProfileStudioSkeleton } from "./Skeletons";
-import {
-  RocketIcon,
-  UserIcon,
-  PlusIcon,
-  CheckIcon,
-  AlertTriangleIcon,
-  MapPinIcon,
-  GlobeIcon,
-  SparklesIcon,
-  ArrowLeftIcon,
-} from "./Icons";
+import { ArrowLeftIcon } from "./Icons";
 
 interface UserProfilePanelProps {
   userId: string;
+  isSignedIn: boolean;
+  onRequireAuth: () => void;
   userEmail?: string;
   userInitials?: string;
   onClose: () => void;
@@ -28,6 +20,8 @@ interface UserProfilePanelProps {
 
 export function UserProfilePanel({
   userId,
+  isSignedIn,
+  onRequireAuth,
   userEmail = "founder@startupmap.in",
   userInitials = "US",
   onClose,
@@ -36,126 +30,137 @@ export function UserProfilePanel({
   onOpenJobs,
 }: UserProfilePanelProps) {
   const [listings, setListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(isSignedIn);
+  const [error, setError] = useState<string | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
-  const loadListings = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/listings?owner_id=${encodeURIComponent(userId)}`);
-      if (res.ok) {
-        const data = await res.json();
-        const userListings: Listing[] = Array.isArray(data) ? data : (data.listings || []);
-        setListings(userListings);
-        if (userListings.length > 0 && !selectedProfileId) {
-          setSelectedProfileId(userListings[0].id);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load user listings:", err);
-    } finally {
+  const loadListings = useCallback(async (showLoading = false, signal?: AbortSignal) => {
+    if (!isSignedIn) {
+      setListings([]);
       setLoading(false);
+      return;
     }
-  };
+    if (showLoading) setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/listings?owner_id=${encodeURIComponent(userId)}`, { signal });
+      if (!res.ok) throw new Error("We couldn’t load your profile. Please try again.");
+      const data = await res.json();
+      const userListings: Listing[] = Array.isArray(data) ? data : (data.listings || []);
+      setListings(userListings);
+      setSelectedProfileId((current) =>
+        userListings.some((listing) => listing.id === current) ? current : (userListings[0]?.id ?? null)
+      );
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error("Failed to load user listings:", err);
+      setError(err instanceof Error ? err.message : "We couldn’t load your profile. Please try again.");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [isSignedIn, userId]);
 
   useEffect(() => {
-    loadListings();
-    const interval = setInterval(loadListings, 15000);
-    return () => clearInterval(interval);
-  }, [userId]);
+    setListings([]);
+    setSelectedProfileId(null);
+    setError(null);
+    if (!isSignedIn) {
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    void loadListings(true, controller.signal);
+    return () => controller.abort();
+  }, [isSignedIn, userId, loadListings]);
 
-  const activeProfile = listings.find((l) => l.id === selectedProfileId) || listings[0] || null;
+  const activeProfile = listings.find((listing) => listing.id === selectedProfileId) || listings[0] || null;
 
-  if (loading) {
-    return <ProfileStudioSkeleton />;
+  if (!isSignedIn) {
+    return (
+      <main className="profile-setup-screen">
+        <section className="profile-setup-card" aria-labelledby="profile-setup-title">
+          <div className="profile-setup-topline">
+            <button type="button" className="profile-setup-back" onClick={onClose} aria-label="Back">
+              <ArrowLeftIcon size={16} /> Back
+            </button>
+            <span className="profile-setup-account">YOUR PROFILE</span>
+          </div>
+          <div className="profile-setup-content">
+            <div className="profile-setup-mark" aria-hidden="true">{userInitials}</div>
+            <p className="profile-setup-eyebrow">JOIN THE COMMUNITY</p>
+            <h1 id="profile-setup-title">Your profile starts here</h1>
+            <p className="profile-setup-description">
+              Sign in to create your map profile, share updates, and publish articles under your own name.
+            </p>
+            <button type="button" className="profile-setup-primary" onClick={onRequireAuth}>Sign in to continue</button>
+            <p className="profile-setup-note">Your public profile can be shared with a link.</p>
+          </div>
+        </section>
+      </main>
+    );
   }
 
-  // IF USER HAS CREATED A PROFILE, SHOW THE FULL PROFILE DASHBOARD & STUDIO IN THE LEFT SIDE PANEL!
+  if (loading) return <ProfileStudioSkeleton />;
+
   if (activeProfile) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {/* PROFILE SWITCHER BAR IF USER HAS MULTIPLE MAP PROFILES */}
+      <div className="profile-panel-stack">
         {listings.length > 1 && (
-          <div style={{ display: "flex", gap: "8px", background: "#ffffff", padding: "10px 16px", borderRadius: "12px", border: "1px solid #e5e7eb", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>SWITCH PROFILE:</span>
-            {listings.map((l) => (
+          <div className="profile-switcher" aria-label="Switch profile">
+            <span>PROFILES</span>
+            {listings.map((listing) => (
               <button
-                key={l.id}
+                key={listing.id}
                 type="button"
-                onClick={() => setSelectedProfileId(l.id)}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "6px",
-                  border: "none",
-                  background: l.id === activeProfile.id ? "#111827" : "#eeeef2",
-                  color: l.id === activeProfile.id ? "#ffffff" : "#374151",
-                  fontWeight: 700,
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
+                aria-pressed={listing.id === activeProfile.id}
+                onClick={() => setSelectedProfileId(listing.id)}
+                className={listing.id === activeProfile.id ? "is-active" : ""}
               >
-                {l.type === "person" ? `p/${l.name}` : `s/${l.name}`}
+                {listing.type === "person" ? `p/${listing.name}` : `s/${listing.name}`}
               </button>
             ))}
           </div>
         )}
-
         <DedicatedProfileStudio
           profile={activeProfile}
+          canManageProfile={activeProfile.owner_id === userId}
+          canManageArticles={activeProfile.owner_id === userId}
           onClose={onClose}
           onSelectListingOnMap={onSelectListingOnMap}
-          onProfileUpdated={loadListings}
+          onProfileUpdated={() => loadListings(false)}
           onOpenJobs={onOpenJobs}
         />
       </div>
     );
   }
 
-  // IF USER HAS NOT CREATED A PROFILE YET, SHOW CREATE PROFILE CALL TO ACTION IN LEFT PANEL
   return (
-    <div style={{ background: "#ffffff", borderRadius: "16px", margin: "16px 20px", padding: "20px", border: "1px solid #e5e7eb" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-        <button
-          type="button"
-          onClick={onClose}
-          style={{ display: "inline-flex", alignItems: "center", gap: "6px", border: "none", background: "#eeeef2", padding: "8px 14px", borderRadius: "8px", fontWeight: 700, cursor: "pointer", fontSize: "13px" }}
-        >
-          <ArrowLeftIcon size={14} /> Back
-        </button>
-        <span style={{ background: "#111827", color: "#ffffff", padding: "4px 10px", borderRadius: "9999px", fontSize: "11px", fontWeight: 700 }}>
-          MY ACCOUNT
-        </span>
-      </div>
-
-      <div style={{ textAlign: "center", padding: "32px 16px" }}>
-        <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "#e6f8ed", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px auto" }}>
-          <RocketIcon size={28} />
+    <main className="profile-setup-screen">
+      <section className="profile-setup-card" aria-labelledby="profile-setup-title">
+        <div className="profile-setup-topline">
+          <button type="button" className="profile-setup-back" onClick={onClose} aria-label="Back">
+            <ArrowLeftIcon size={16} /> Back
+          </button>
+          <span className="profile-setup-account">MY ACCOUNT</span>
         </div>
-        <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", fontWeight: 800 }}>No Map Profile Created Yet</h3>
-        <p style={{ margin: "0 0 24px 0", fontSize: "14px", color: "#6b7280", lineHeight: "1.5" }}>
-          Create a profile to pin yourself or your startup on the interactive map and start posting in the community feed.
-        </p>
-
-        <button
-          type="button"
-          onClick={onAddListingClick}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "12px 24px",
-            borderRadius: "10px",
-            border: "none",
-            background: "#f85900",
-            color: "#ffffff",
-            fontWeight: 800,
-            fontSize: "14px",
-            cursor: "pointer",
-          }}
-        >
-          <PlusIcon size={16} /> Create Map Profile
-        </button>
-      </div>
-    </div>
+        <div className="profile-setup-content">
+          <div className="profile-setup-mark" aria-hidden="true">{userInitials}</div>
+          <p className="profile-setup-eyebrow">PROFILE SETUP</p>
+          <h1 id="profile-setup-title">Make your place on the map</h1>
+          <p className="profile-setup-description">
+            Create a personal or startup profile to pin your work on the map, join community conversations, and share articles.
+          </p>
+          {error ? (
+            <div className="profile-setup-error" role="alert">
+              <p>{error}</p>
+              <button type="button" onClick={() => void loadListings(true)}>Try again</button>
+            </div>
+          ) : (
+            <button type="button" className="profile-setup-primary" onClick={onAddListingClick}>Create your profile</button>
+          )}
+          <p className="profile-setup-note">Signed in as {userEmail}</p>
+        </div>
+      </section>
+    </main>
   );
 }

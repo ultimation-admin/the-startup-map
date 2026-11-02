@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CommunityPost, PostReply, Listing } from "@/lib/db";
-import { UpvoteIcon, ShareSendIcon } from "./Icons";
+import { ShareSendIcon, RepostIcon } from "./Icons";
 
 function formatReplyTimeAgo(dateString?: string): string {
   if (!dateString) return "1h";
@@ -25,7 +25,6 @@ function formatReplyTimeAgo(dateString?: string): string {
   }
 }
 
-
 interface RedditThreadRepliesProps {
   post: CommunityPost;
   isSignedIn: boolean;
@@ -36,7 +35,8 @@ interface RedditThreadRepliesProps {
   onRequireAuth: () => void;
   onShowNoProfileModal: () => void;
   onSelectAuthorHandle?: (handle: string) => void;
-  onAddReply: (postId: string, content: string, parentReplyId?: string, replyToUser?: string) => Promise<void>;
+  onAddReply: (postId: string, content: string, parentReplyId?: string, replyToUser?: string) => Promise<boolean>;
+  onDeleteReply?: (postId: string, replyId: string) => Promise<boolean>;
 }
 
 export function RedditThreadReplies({
@@ -50,6 +50,7 @@ export function RedditThreadReplies({
   onShowNoProfileModal,
   onSelectAuthorHandle,
   onAddReply,
+  onDeleteReply,
 }: RedditThreadRepliesProps) {
   const [mainReplyText, setMainReplyText] = useState("");
   const [isSubmittingMain, setIsSubmittingMain] = useState(false);
@@ -68,7 +69,7 @@ export function RedditThreadReplies({
     );
   };
 
-  const handleToggleUpvote = (replyId: string, initialCount = 5) => {
+  const handleToggleUpvote = (replyId: string, initialCount = 0) => {
     if (!isSignedIn) {
       onRequireAuth();
       return;
@@ -79,7 +80,7 @@ export function RedditThreadReplies({
       return {
         ...prev,
         [replyId]: {
-          count: current.count + (nextUpvoted ? 1 : -1),
+          count: Math.max(0, current.count + (nextUpvoted ? 1 : -1)),
           upvoted: nextUpvoted,
         },
       };
@@ -89,17 +90,30 @@ export function RedditThreadReplies({
   const handleShareReply = (text: string) => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(text);
-      alert("Comment text copied to clipboard!");
+      alert("Comment copied to clipboard!");
     }
   };
 
   const effectiveReplies = post.replies ?? [];
 
+  // Compute active user display handle
+  const activeUserHandle = userProfileListing
+    ? (userProfileListing.type === "person" ||
+       userProfileListing.type?.toLowerCase().includes("person") ||
+       userProfileListing.type?.toLowerCase().includes("people")
+        ? `p/${userProfileListing.slug || userProfileListing.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+        : `s/${userProfileListing.slug || userProfileListing.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`)
+    : (userName.startsWith("p/") || userName.startsWith("s/")
+        ? userName
+        : `p/${userName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "founder"}`);
+
   // Robust check for primary replies (top-level direct replies to the post)
+  // If parent comment was deleted or not found, treat as primary to prevent orphan disappearance
   const isPrimaryReply = (r: PostReply) => {
     if (!r.parent_reply_id) return true;
     const pId = String(r.parent_reply_id).trim();
-    return pId === "" || pId === "null" || pId === "undefined";
+    if (pId === "" || pId === "null" || pId === "undefined") return true;
+    return !effectiveReplies.some((other) => String(other.id).trim() === pId);
   };
 
   // Helper to find child replies of a specific parent comment
@@ -111,8 +125,8 @@ export function RedditThreadReplies({
 
   const primaryReplies = effectiveReplies.filter(isPrimaryReply);
 
-  const handleCreateTopLevelReply = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateTopLevelReply = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!isSignedIn) {
       onRequireAuth();
       return;
@@ -121,12 +135,35 @@ export function RedditThreadReplies({
 
     setIsSubmittingMain(true);
     try {
-      await onAddReply(post.id, mainReplyText.trim());
-      setMainReplyText("");
+      const ok = await onAddReply(post.id, mainReplyText.trim());
+      if (ok) {
+        setMainReplyText("");
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setIsSubmittingMain(false);
+    }
+  };
+
+  const handleCreateSubReply = async (parentReply: PostReply) => {
+    if (!isSignedIn) {
+      onRequireAuth();
+      return;
+    }
+    if (!subReplyText.trim()) return;
+
+    setIsSubmittingSub(true);
+    try {
+      const ok = await onAddReply(post.id, subReplyText.trim(), parentReply.id, parentReply.user_name);
+      if (ok) {
+        setActiveSubReplyId(null);
+        setSubReplyText("");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSubmittingSub(false);
     }
   };
 
@@ -146,6 +183,7 @@ export function RedditThreadReplies({
 
     const isStartup = reply.user_name.startsWith("s/");
     const formattedHandle = reply.user_name;
+    const isAuthor = Boolean(isSignedIn && userId && reply.user_id === userId);
 
     return (
       <div key={reply.id} className={`secondary-reply-node depth-${depth} ${isCollapsed ? "collapsed" : ""}`}>
@@ -179,9 +217,10 @@ export function RedditThreadReplies({
               {formattedHandle}
             </button>
 
-            {isOP && <span className="reddit-op-badge" title="Original Poster">OP</span>}
+            {isOP && <span className="reddit-author-badge">• Author</span>}
 
-            <span className="reddit-comment-time">• {formatReplyTimeAgo(reply.created_at)}</span>
+            <span className="post-dot-sep" aria-hidden="true">·</span>
+            <span className="reddit-comment-time">{formatReplyTimeAgo(reply.created_at)}</span>
             {childReplies.length > 0 && (
               <button
                 type="button"
@@ -205,50 +244,90 @@ export function RedditThreadReplies({
               <div className="reddit-comment-actions">
                 <button
                   type="button"
-                  className={`reddit-upvote-btn ${upvoteInfo.upvoted ? "upvoted" : ""}`}
+                  className={`reddit-action-btn like-action ${upvoteInfo.upvoted ? "liked" : ""}`}
                   onClick={() => handleToggleUpvote(reply.id, upvoteInfo.count)}
+                  title="Like"
+                  aria-label="Like"
                 >
-                  <UpvoteIcon size={12} filled={upvoteInfo.upvoted} />
-                  <span>{upvoteInfo.count}</span>
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill={upvoteInfo.upvoted ? "#ef4444" : "none"} stroke={upvoteInfo.upvoted ? "#ef4444" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                  </svg>
+                  {upvoteInfo.count > 0 && <span className="action-count">{upvoteInfo.count}</span>}
                 </button>
 
                 <button
                   type="button"
-                  className="reddit-action-btn"
+                  className="reddit-action-btn reply-action"
                   onClick={() => {
-                    if (!isSignedIn) { onRequireAuth(); return; }
+                    if (!isSignedIn) {
+                      onRequireAuth();
+                      return;
+                    }
                     setActiveSubReplyId(activeSubReplyId === reply.id ? null : reply.id);
                     setSubReplyText("");
                   }}
+                  title="Reply"
+                  aria-label="Reply"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                   </svg>
-                  <span>Reply</span>
                 </button>
 
                 <button
                   type="button"
-                  className="reddit-action-btn"
-                  onClick={() => handleShareReply(reply.content)}
+                  className="reddit-action-btn repost-action"
+                  onClick={() => alert("Reposted reply!")}
+                  title="Repost"
+                  aria-label="Repost"
                 >
-                  <ShareSendIcon size={12} />
-                  <span>Share</span>
+                  <RepostIcon size={16} />
                 </button>
+
+                <button
+                  type="button"
+                  className="reddit-action-btn share-action"
+                  onClick={() => handleShareReply(reply.content)}
+                  title="Share"
+                  aria-label="Share"
+                >
+                  <ShareSendIcon size={16} />
+                </button>
+
+                {isAuthor && onDeleteReply && (
+                  <button
+                    type="button"
+                    className="reddit-action-btn reddit-delete-btn"
+                    onClick={() => onDeleteReply(post.id, reply.id)}
+                    title="Delete reply"
+                    aria-label="Delete reply"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                )}
               </div>
 
               {/* INLINE SUB-REPLY COMPOSER */}
               {activeSubReplyId === reply.id && (
                 <div className="reddit-inline-reply-box">
                   <div className="reply-as-badge">
-                    Replying to <b>{reply.user_name}</b> as <span style={{ color: "#f85900", fontWeight: 700 }}>{userName}</span>
+                    Replying to <b>{reply.user_name}</b> as <span style={{ color: "#f85900", fontWeight: 700 }}>{activeUserHandle}</span>
                   </div>
                   <textarea
                     autoFocus
                     rows={2}
-                    placeholder={`Reply to ${reply.user_name}...`}
+                    placeholder={`Reply to ${reply.user_name}... (Ctrl+Enter to post)`}
                     value={subReplyText}
                     onChange={(e) => setSubReplyText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        handleCreateSubReply(reply);
+                      }
+                    }}
                     className="reddit-reply-textarea"
                   />
                   <div className="reddit-inline-reply-footer">
@@ -259,19 +338,7 @@ export function RedditThreadReplies({
                       type="button"
                       className="reddit-submit-btn"
                       disabled={isSubmittingSub || !subReplyText.trim()}
-                      onClick={async () => {
-                        if (!subReplyText.trim()) return;
-                        setIsSubmittingSub(true);
-                        try {
-                          await onAddReply(post.id, subReplyText.trim(), reply.id, reply.user_name);
-                          setActiveSubReplyId(null);
-                          setSubReplyText("");
-                        } catch (err) {
-                          console.error(err);
-                        } finally {
-                          setIsSubmittingSub(false);
-                        }
-                      }}
+                      onClick={() => handleCreateSubReply(reply)}
                     >
                       {isSubmittingSub ? "Replying..." : "Reply"}
                     </button>
@@ -295,11 +362,16 @@ export function RedditThreadReplies({
   return (
     <div className="reddit-thread-container" aria-label="Post replies">
       <div className="reddit-thread-heading">
-        <span>Replies</span>
-        <span className="reddit-reply-count">{effectiveReplies.length}</span>
+        <div className="reddit-sort-filter">
+          <span>↓↑ Top</span>
+        </div>
+        <div className="reddit-activity-link">
+          <span>{effectiveReplies.length} {effectiveReplies.length === 1 ? "reply" : "replies"}</span>
+        </div>
       </div>
-      {/* PRIMARY REPLY COMPOSER (Avatar perfectly aligned with 44px primary avatar column) */}
-      <form onSubmit={handleCreateTopLevelReply} className="primary-reply-composer-row">
+
+      {/* PRIMARY REPLY COMPOSER (Threads desktop inline pill) */}
+      <form onSubmit={handleCreateTopLevelReply} className="primary-reply-composer-row threads-reply-composer">
         <div className="primary-avatar-col">
           <div
             className="primary-reply-avatar composer-avatar"
@@ -310,40 +382,33 @@ export function RedditThreadReplies({
             ) : userAvatar ? (
               <img src={userAvatar} alt={userName} />
             ) : (
-              <span>{userName.substring(0, 2).toUpperCase()}</span>
+              <span>{(userName || "FO").substring(0, 2).toUpperCase()}</span>
             )}
           </div>
         </div>
 
-        <div className="primary-composer-box">
-          <div className="reddit-comment-user-badge">
-            Comment as <b>{userName}</b>
-          </div>
-          <textarea
-            rows={2}
-            placeholder="What are your thoughts?"
+        <div className="primary-composer-pill">
+          <input
+            type="text"
+            placeholder={isSignedIn ? `Reply to ${post.user_name}...` : "Sign in to join the discussion..."}
             value={mainReplyText}
             onChange={(e) => setMainReplyText(e.target.value)}
-            className="reddit-main-textarea"
+            onFocus={() => {
+              if (!isSignedIn) {
+                onRequireAuth();
+              }
+            }}
+            className="threads-reply-input"
           />
-          <div className="reddit-main-footer">
-            {mainReplyText && (
-              <button
-                type="button"
-                className="reddit-cancel-btn"
-                onClick={() => setMainReplyText("")}
-              >
-                Clear
-              </button>
-            )}
+          {mainReplyText.trim() && (
             <button
               type="submit"
-              className="reddit-submit-btn"
-              disabled={isSubmittingMain || !mainReplyText.trim()}
+              className="threads-reply-submit-btn"
+              disabled={isSubmittingMain}
             >
-              {isSubmittingMain ? "Commenting..." : "Comment"}
+              {isSubmittingMain ? "..." : "Reply"}
             </button>
-          </div>
+          )}
         </div>
       </form>
 
@@ -367,6 +432,7 @@ export function RedditThreadReplies({
           const isStartup = priReply.user_name.startsWith("s/");
           const formattedHandle = priReply.user_name;
           const isLastPrimary = index === primaryReplies.length - 1;
+          const isAuthor = Boolean(isSignedIn && userId && priReply.user_id === userId);
 
           return (
             <div key={priReply.id} className={`primary-reply-card ${secondaryReplies.length > 0 ? "has-branch" : ""}`}>
@@ -400,9 +466,10 @@ export function RedditThreadReplies({
                       {formattedHandle}
                     </button>
 
-                    {isOP && <span className="reddit-op-badge" title="Original Poster">OP</span>}
+                    {isOP && <span className="reddit-author-badge">• Author</span>}
 
-                    <span className="reddit-comment-time">• {formatReplyTimeAgo(priReply.created_at)}</span>
+                    <span className="post-dot-sep" aria-hidden="true">·</span>
+                    <span className="reddit-comment-time">{formatReplyTimeAgo(priReply.created_at)}</span>
                     {secondaryReplies.length > 0 && (
                       <button
                         type="button"
@@ -421,50 +488,90 @@ export function RedditThreadReplies({
                       <div className="reddit-comment-actions">
                         <button
                           type="button"
-                          className={`reddit-upvote-btn ${upvoteInfo.upvoted ? "upvoted" : ""}`}
+                          className={`reddit-action-btn like-action ${upvoteInfo.upvoted ? "liked" : ""}`}
                           onClick={() => handleToggleUpvote(priReply.id, upvoteInfo.count)}
+                          title="Like"
+                          aria-label="Like"
                         >
-                          <UpvoteIcon size={12} filled={upvoteInfo.upvoted} />
-                          <span>{upvoteInfo.count}</span>
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill={upvoteInfo.upvoted ? "#ef4444" : "none"} stroke={upvoteInfo.upvoted ? "#ef4444" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                          {upvoteInfo.count > 0 && <span className="action-count">{upvoteInfo.count}</span>}
                         </button>
 
                         <button
                           type="button"
-                          className="reddit-action-btn"
+                          className="reddit-action-btn reply-action"
                           onClick={() => {
-                            if (!isSignedIn) { onRequireAuth(); return; }
+                            if (!isSignedIn) {
+                              onRequireAuth();
+                              return;
+                            }
                             setActiveSubReplyId(activeSubReplyId === priReply.id ? null : priReply.id);
                             setSubReplyText("");
                           }}
+                          title="Reply"
+                          aria-label="Reply"
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                           </svg>
-                          <span>Reply</span>
                         </button>
 
                         <button
                           type="button"
-                          className="reddit-action-btn"
-                          onClick={() => handleShareReply(priReply.content)}
+                          className="reddit-action-btn repost-action"
+                          onClick={() => alert("Reposted reply!")}
+                          title="Repost"
+                          aria-label="Repost"
                         >
-                          <ShareSendIcon size={12} />
-                          <span>Share</span>
+                          <RepostIcon size={16} />
                         </button>
+
+                        <button
+                          type="button"
+                          className="reddit-action-btn share-action"
+                          onClick={() => handleShareReply(priReply.content)}
+                          title="Share"
+                          aria-label="Share"
+                        >
+                          <ShareSendIcon size={16} />
+                        </button>
+
+                        {isAuthor && onDeleteReply && (
+                          <button
+                            type="button"
+                            className="reddit-action-btn reddit-delete-btn"
+                            onClick={() => onDeleteReply(post.id, priReply.id)}
+                            title="Delete reply"
+                            aria-label="Delete reply"
+                          >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
 
                       {/* INLINE SUB-REPLY COMPOSER FOR PRIMARY REPLY */}
                       {activeSubReplyId === priReply.id && (
                         <div className="reddit-inline-reply-box">
                           <div className="reply-as-badge">
-                            Replying to <b>{priReply.user_name}</b> as <span style={{ color: "#f85900", fontWeight: 700 }}>{userName}</span>
+                            Replying to <b>{priReply.user_name}</b> as <span style={{ color: "#f85900", fontWeight: 700 }}>{activeUserHandle}</span>
                           </div>
                           <textarea
                             autoFocus
                             rows={2}
-                            placeholder={`Reply to ${priReply.user_name}...`}
+                            placeholder={`Reply to ${priReply.user_name}... (Ctrl+Enter to post)`}
                             value={subReplyText}
                             onChange={(e) => setSubReplyText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                e.preventDefault();
+                                handleCreateSubReply(priReply);
+                              }
+                            }}
                             className="reddit-reply-textarea"
                           />
                           <div className="reddit-inline-reply-footer">
@@ -475,19 +582,7 @@ export function RedditThreadReplies({
                               type="button"
                               className="reddit-submit-btn"
                               disabled={isSubmittingSub || !subReplyText.trim()}
-                              onClick={async () => {
-                                if (!subReplyText.trim()) return;
-                                setIsSubmittingSub(true);
-                                try {
-                                  await onAddReply(post.id, subReplyText.trim(), priReply.id, priReply.user_name);
-                                  setActiveSubReplyId(null);
-                                  setSubReplyText("");
-                                } catch (err) {
-                                  console.error(err);
-                                } finally {
-                                  setIsSubmittingSub(false);
-                                }
-                              }}
+                              onClick={() => handleCreateSubReply(priReply)}
                             >
                               {isSubmittingSub ? "Replying..." : "Reply"}
                             </button>

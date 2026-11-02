@@ -1,7 +1,9 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/explore(.*)",
   "/search(.*)",
   "/map(.*)",
   "/activity(.*)",
@@ -11,6 +13,7 @@ const isPublicRoute = createRouteMatcher([
   "/sso-callback(.*)",
   "/p/(.*)",
   "/s/(.*)",
+  "/articles(.*)",
   "/terms-of-service(.*)",
   "/privacy-policy(.*)",
   "/api/branding",
@@ -20,6 +23,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/posts(.*)",
   "/api/spotlights",
   "/api/media(.*)",
+  "/api/articles(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -27,7 +31,10 @@ export default clerkMiddleware(async (auth, req) => {
 
   // All non-GET API routes strictly require authentication
   if (isApiRoute && req.method !== "GET") {
-    await auth.protect();
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     return;
   }
 

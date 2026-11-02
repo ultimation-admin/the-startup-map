@@ -9,14 +9,6 @@ import {
 } from "@/lib/db";
 import { rankCommunityFeed } from "@/lib/feedAlgorithm";
 import {
-  SparklesIcon,
-  PlusIcon,
-  UploadIcon,
-  ImageIcon,
-  UserGroupIcon,
-  FlameIcon,
-  MapPinIcon,
-  CheckIcon,
   RepostIcon,
   ShareSendIcon,
   MoreHorizontalIcon,
@@ -24,17 +16,16 @@ import {
 import { CommunityFeedSkeleton } from "./Skeletons";
 import { EmptyFeedState } from "./EmptyFeedState";
 
-import { INTEREST_TOPICS } from "./FeedOnboardingModal";
 import { RedditThreadReplies } from "./RedditThreadReplies";
 import { uploadFileToR2 } from "@/lib/uploadClient";
 
 function formatTimeAgo(dateString?: string): string {
-  if (!dateString) return "â€”";
+  if (!dateString) return "";
   try {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
-    if (isNaN(diffMs) || diffMs < 0) return "â€”";
+    if (isNaN(diffMs) || diffMs < 0) return "";
     const diffSecs = Math.floor(diffMs / 1000);
     const diffMins = Math.floor(diffSecs / 60);
     const diffHours = Math.floor(diffMins / 60);
@@ -45,7 +36,7 @@ function formatTimeAgo(dateString?: string): string {
     if (diffHours < 24) return `${diffHours}h`;
     return `${diffDays}d`;
   } catch {
-    return "â€”";
+    return "";
   }
 }
 
@@ -83,8 +74,9 @@ export function CommunityFeed({
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [selectedCommunityId, setSelectedCommunityId] = useState<string>("all");
-  const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
+  const [joinedCommunities, setJoinedCommunities] = useState<string[]>(["startups", "founders", "genai"]);
   const [showNoProfileModal, setShowNoProfileModal] = useState(false);
+  const [showCreateBox, setShowCreateBox] = useState(false);
   const [userProfileListing, setUserProfileListing] = useState<Listing | null>(null);
 
   useEffect(() => {
@@ -110,7 +102,6 @@ export function CommunityFeed({
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [showCreateBox, setShowCreateBox] = useState(false);
 
   // Reply state: active post ID being replied to
   const [activeReplyPostId, setActiveReplyPostId] = useState<string | null>(null);
@@ -384,13 +375,13 @@ export function CommunityFeed({
     content: string,
     parentReplyId?: string,
     replyToUser?: string
-  ) => {
+  ): Promise<boolean> => {
     if (!isSignedIn) {
       onRequireAuth();
-      return;
+      return false;
     }
 
-    if (!content.trim()) return;
+    if (!content.trim()) return false;
 
     const newReplyData = {
       post_id: postId,
@@ -414,25 +405,70 @@ export function CommunityFeed({
         const createdReply = data.reply || data;
         const updated = posts.map((p) => {
           if (p.id === postId) {
+            const currentReplies = p.replies || [];
             return {
               ...p,
-              replies: [...p.replies, createdReply],
-              replies_count: p.replies_count + 1,
+              replies: [...currentReplies, createdReply],
+              replies_count: Math.max((p.replies_count || 0) + 1, currentReplies.length + 1),
             };
           }
           return p;
         });
         setPosts(updated);
+        return true;
       } else {
         const errData = await res.json().catch(() => ({}));
-        if (res.status === 403 || errData.error === "NO_PROFILE_CREATED") {
+        if (res.status === 403 && errData.error === "NO_PROFILE_CREATED") {
           setShowNoProfileModal(true);
         } else {
           alert(errData.message || errData.error || "Failed to add reply.");
         }
+        return false;
       }
     } catch (err) {
       console.error(err);
+      return false;
+    }
+  };
+
+  const handleDeleteReply = async (postId: string, replyId: string): Promise<boolean> => {
+    if (!isSignedIn) {
+      onRequireAuth();
+      return false;
+    }
+    if (!confirm("Are you sure you want to delete this reply?")) {
+      return false;
+    }
+    try {
+      const res = await fetch(`/api/posts/${postId}/replies?replyId=${encodeURIComponent(replyId)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setPosts((prev) =>
+          prev.map((p) => {
+            if (p.id === postId) {
+              const current = p.replies || [];
+              const filtered = current.filter(
+                (r) => r.id !== replyId && r.parent_reply_id !== replyId
+              );
+              return {
+                ...p,
+                replies: filtered,
+                replies_count: Math.max(0, (p.replies_count || current.length) - 1),
+              };
+            }
+            return p;
+          })
+        );
+        return true;
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.message || errData.error || "Failed to delete reply.");
+        return false;
+      }
+    } catch (err) {
+      console.error("Failed to delete reply:", err);
+      return false;
     }
   };
 
@@ -549,120 +585,8 @@ export function CommunityFeed({
   return (
     <div className="community-feed-wrapper">
 
-      {/* CREATE POST BLOCK (TWITTER / X STYLE COMPOSER) */}
-      {showCreateBox && (
-        <form onSubmit={handleCreatePost} className="create-post-composer">
-          <div className="composer-row">
-            {/* ACTIVE PROFILE AVATAR */}
-            <div className="composer-avatar" style={{ background: userProfileListing?.color || "#10b981", borderRadius: "50%" }}>
-              {userProfileListing?.logo_url ? (
-                <img src={userProfileListing.logo_url} alt={userProfileListing.name} />
-              ) : userProfileListing?.initials ? (
-                <span>{userProfileListing.initials}</span>
-              ) : userAvatar ? (
-                <img src={userAvatar} alt={userName} />
-              ) : (
-                <span>{userName.substring(0, 2).toUpperCase()}</span>
-              )}
-            </div>
-
-            {/* COMPOSER BODY */}
-            <div className="composer-body">
-              {/* TARGET COMMUNITY HEADER: posting destination */}
-              <div className="composer-header-title">
-                <span className="post-at-text">Posting to</span>
-                <div className="composer-community-pill">
-                  <select
-                    value={newPostCommunity}
-                    onChange={(e) => setNewPostCommunity(e.target.value)}
-                    className="community-select-compact"
-                  >
-                    {communities.length > 0 ? (
-                      communities.map((c) => {
-                        const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
-                        return (
-                          <option key={c.id} value={c.id}>
-                            {formattedName}
-                          </option>
-                        );
-                      })
-                    ) : (
-                      <option value="startups">/startups</option>
-                    )}
-                  </select>
-                </div>
-              </div>
-
-              {/* TEXTAREA */}
-              <textarea
-                required
-                rows={3}
-                maxLength={500}
-                aria-label="Write your post"
-                placeholder="What's happening in your startup journey?"
-                value={newPostText}
-                onChange={(e) => setNewPostText(e.target.value)}
-                className="composer-textarea"
-              />
-
-              {/* IMAGE ATTACHMENT PREVIEW */}
-              {imagePreviewUrl && (
-                <div className="composer-image-preview-wrap">
-                  <img src={imagePreviewUrl} alt="Attachment" className="composer-image-preview" />
-                  <button type="button" className="remove-composer-img-btn" onClick={handleRemoveImage}>
-                    âœ•
-                  </button>
-                </div>
-              )}
-
-              {/* COMPOSER BOTTOM ACTIONS */}
-              <div className="composer-footer">
-                <div className="composer-tools">
-                  <label
-                    className={`composer-tool-icon-btn ${imagePreviewUrl ? "active" : ""}`}
-                    title={
-                      isUploadingImage
-                        ? "Uploading photo..."
-                        : imagePreviewUrl
-                        ? "Photo Attached (Click to change)"
-                        : "Add Photo"
-                    }
-                    aria-label={imagePreviewUrl ? "Change attached photo" : "Add a photo"}
-                  >
-                    <ImageIcon size={18} />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageSelect}
-                      className="composer-file-input"
-                    />
-                  </label>
-                </div>
-
-                <div className="composer-submit-group">
-                  <span className="composer-char-count">{500 - newPostText.length}</span>
-                  <button
-                    type="button"
-                    className="composer-discard-btn"
-                    onClick={() => {
-                      setNewPostText("");
-                      handleRemoveImage();
-                      setShowCreateBox(false);
-                    }}
-                  >
-                    Discard
-                  </button>
-                  <button type="submit" className="composer-post-btn" disabled={isUploadingImage || !newPostText.trim()}>
-                    {isUploadingImage ? "Posting..." : "Post"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-      )}
-
-      {/* FIXED STICKY TOP SECTION FOR DISCOVERY TABS (TWITTER / X STYLE) */}
+      
+      {/* 1. FIXED STICKY TOP SECTION FOR DISCOVERY TABS */}
       <div ref={feedTopNavRef} className="feed-top-section-fixed">
         <div className="feed-top-action-bar">
           <div className="feed-nav-tabs twitter-nav-tabs">
@@ -720,7 +644,7 @@ export function CommunityFeed({
                       setShowJoinedDropdown(false);
                     }}
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m6 9 6 6 6-6" />
                     </svg>
                   </span>
@@ -739,7 +663,7 @@ export function CommunityFeed({
                     }}
                   >
                     <span>For You</span>
-                    {feedTab === "for-you" && <CheckIcon size={14} />}
+                    {feedTab === "for-you" && <span className="dropdown-selection-state">Selected</span>}
                   </button>
 
                   <button
@@ -751,7 +675,7 @@ export function CommunityFeed({
                     }}
                   >
                     <span>Latest</span>
-                    {feedTab === "latest" && <CheckIcon size={14} />}
+                    {feedTab === "latest" && <span className="dropdown-selection-state">Selected</span>}
                   </button>
                 </div>
               )}
@@ -781,7 +705,7 @@ export function CommunityFeed({
                       setShowJoinedDropdown(!showJoinedDropdown);
                     }}
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m6 9 6 6 6-6" />
                     </svg>
                   </span>
@@ -802,18 +726,27 @@ export function CommunityFeed({
                           joinedList.map((c) => {
                             const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
                             return (
-                              <div key={c.id} className="dropdown-community-row">
+                              <div
+                                key={c.id}
+                                className="dropdown-community-row"
+                                onClick={() => {
+                                  setSelectedCommunityId(c.id);
+                                  setFeedTab("joined");
+                                  setShowJoinedDropdown(false);
+                                }}
+                              >
                                 <div className="community-info">
                                   <b>{formattedName}</b>
                                 </div>
                                 <button
                                   type="button"
                                   className="join-toggle-btn joined"
-                                  onClick={() => toggleJoinCommunity(c.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleJoinCommunity(c.id);
+                                  }}
                                 >
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <CheckIcon size={12} /> Joined
-                                  </span>
+                                  Joined
                                 </button>
                               </div>
                             );
@@ -826,14 +759,25 @@ export function CommunityFeed({
                             {unjoinedList.map((c) => {
                               const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
                               return (
-                                <div key={c.id} className="dropdown-community-row">
+                                <div
+                                  key={c.id}
+                                  className="dropdown-community-row"
+                                  onClick={() => {
+                                    setSelectedCommunityId(c.id);
+                                    setFeedTab("joined");
+                                    setShowJoinedDropdown(false);
+                                  }}
+                                >
                                   <div className="community-info">
                                     <b>{formattedName}</b>
                                   </div>
                                   <button
                                     type="button"
                                     className="join-toggle-btn"
-                                    onClick={() => toggleJoinCommunity(c.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleJoinCommunity(c.id);
+                                    }}
                                   >
                                     + Join
                                   </button>
@@ -850,29 +794,172 @@ export function CommunityFeed({
             </div>
           </div>
 
-          {!showCreateBox && (
-            <div className="feed-header-actions-row">
-              <button
-                type="button"
-                className="create-post-btn twitter-create-post-btn"
-                onClick={() => {
-                  if (!isSignedIn) {
-                    onRequireAuth();
-                  } else {
-                    setShowCreateBox(true);
-                  }
-                }}
-              >
-                <PlusIcon size={14} />
-                <span>Post</span>
-              </button>
-            </div>
-          )}
+          <div className="feed-header-actions-row">
+            <button
+              type="button"
+              className="create-post-btn twitter-create-post-btn"
+              onClick={() => {
+                if (!isSignedIn) {
+                  onRequireAuth();
+                } else {
+                  setShowCreateBox(true);
+                }
+              }}
+            >
+              <span>Post</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {actionError && <p className="feed-action-error" role="alert">{actionError}</p>}
-      {shareFeedback && <p className="feed-action-feedback" role="status">{shareFeedback}</p>}
+      {/* 2. STREAM COMPOSER (INLINE STREAM CARD MATCHING THREADS DESKTOP) */}
+      {showCreateBox ? (
+        <form onSubmit={handleCreatePost} className="create-post-composer">
+          <div className="composer-row">
+            <div className="composer-avatar" style={{ background: userProfileListing?.color || "#f85900", borderRadius: "50%" }}>
+              {userProfileListing?.logo_url ? (
+                <img src={userProfileListing.logo_url} alt={userProfileListing.name} />
+              ) : userProfileListing?.initials ? (
+                <span>{userProfileListing.initials}</span>
+              ) : userAvatar ? (
+                <img src={userAvatar} alt={userName} />
+              ) : (
+                <span>{(userName || "FO").substring(0, 2).toUpperCase()}</span>
+              )}
+            </div>
+
+            <div className="composer-body">
+              <div className="composer-header-title">
+                <span className="post-at-text">Posting to</span>
+                <div className="composer-community-pill">
+                  <select
+                    value={newPostCommunity}
+                    onChange={(e) => setNewPostCommunity(e.target.value)}
+                    className="community-select-compact"
+                  >
+                    {communities.length > 0 ? (
+                      communities.map((c) => {
+                        const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {formattedName}
+                          </option>
+                        );
+                      })
+                    ) : (
+                      <option value="startups">/startups</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <textarea
+                required
+                autoFocus
+                rows={3}
+                maxLength={500}
+                aria-label="Write your post"
+                placeholder="What's happening in your startup journey?"
+                value={newPostText}
+                onChange={(e) => setNewPostText(e.target.value)}
+                className="composer-textarea"
+              />
+
+              {imagePreviewUrl && (
+                <div className="composer-image-preview-wrap">
+                  <img src={imagePreviewUrl} alt="Attachment" className="composer-image-preview" />
+                  <button type="button" className="remove-composer-img-btn" onClick={handleRemoveImage}>
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              <div className="composer-footer">
+                <div className="composer-tools">
+                  <label
+                    className={`composer-tool-icon-btn ${imagePreviewUrl ? "active" : ""}`}
+                    title={
+                      isUploadingImage
+                        ? "Uploading photo..."
+                        : imagePreviewUrl
+                        ? "Photo Attached (Click to change)"
+                        : "Add Photo"
+                    }
+                    aria-label={imagePreviewUrl ? "Change attached photo" : "Add a photo"}
+                  >
+                    <span className="composer-photo-label">Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="composer-file-input"
+                    />
+                  </label>
+                </div>
+
+                <div className="composer-submit-group">
+                  <span className="composer-char-count">{500 - newPostText.length}</span>
+                  <button
+                    type="button"
+                    className="composer-discard-btn"
+                    onClick={() => {
+                      setNewPostText("");
+                      handleRemoveImage();
+                      setShowCreateBox(false);
+                    }}
+                  >
+                    Discard
+                  </button>
+                  <button type="submit" className="composer-post-btn" disabled={isUploadingImage || !newPostText.trim()}>
+                    {isUploadingImage ? "Posting..." : "Post"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      ) : (
+        <div
+          className="stream-composer-collapsed threads-composer-bar"
+          onClick={() => {
+            if (!isSignedIn) {
+              onRequireAuth();
+            } else {
+              setShowCreateBox(true);
+            }
+          }}
+        >
+          <div className="stream-composer-avatar" style={{ background: userProfileListing?.color || "#f85900", borderRadius: "50%" }}>
+            {userProfileListing?.logo_url ? (
+              <img src={userProfileListing.logo_url} alt={userProfileListing.name} />
+            ) : userProfileListing?.initials ? (
+              <span>{userProfileListing.initials}</span>
+            ) : userAvatar ? (
+              <img src={userAvatar} alt={userName} />
+            ) : (
+              <span>{(userName || "FO").substring(0, 2).toUpperCase()}</span>
+            )}
+          </div>
+          <div className="stream-composer-input-pill">
+            <span>What&apos;s happening in your startup journey?</span>
+          </div>
+          <button
+            type="button"
+            className="stream-composer-post-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isSignedIn) {
+                onRequireAuth();
+              } else {
+                setShowCreateBox(true);
+              }
+            }}
+          >
+            Post
+          </button>
+        </div>
+      )}
+
 
       {/* POSTS FEED */}
       <div className="posts-feed">
@@ -1023,11 +1110,12 @@ export function CommunityFeed({
                         className={`post-action-btn like-action ${isLiked ? "liked" : ""}`}
                         onClick={() => handleToggleLike(post.id)}
                         title="Like"
+                        aria-label="Like"
                       >
-                        <svg viewBox="0 0 24 24" className="action-icon" fill={isLiked ? "#ef4444" : "none"} stroke={isLiked ? "#ef4444" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg viewBox="0 0 24 24" className="action-icon" fill={isLiked ? "#ef4444" : "none"} stroke={isLiked ? "#ef4444" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                         </svg>
-                        <span className="action-count">{post.likes_count}</span>
+                        {post.likes_count > 0 && <span className="action-count">{post.likes_count}</span>}
                       </button>
 
                       <button
@@ -1035,11 +1123,14 @@ export function CommunityFeed({
                         className={`post-action-btn comment-action ${isReplying ? "active" : ""}`}
                         onClick={() => setActiveReplyPostId(isReplying ? null : post.id)}
                         title="Comment"
+                        aria-label="Comment"
                       >
-                        <svg viewBox="0 0 24 24" className="action-icon" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg viewBox="0 0 24 24" className="action-icon" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
                         </svg>
-                        <span className="action-count">{post.replies_count ?? post.replies.length}</span>
+                        {Math.max(post.replies_count || 0, post.replies?.length || 0) > 0 && (
+                          <span className="action-count">{Math.max(post.replies_count || 0, post.replies?.length || 0)}</span>
+                        )}
                       </button>
 
                       <button
@@ -1050,8 +1141,8 @@ export function CommunityFeed({
                         aria-label={isReposted ? "Undo repost" : "Repost"}
                         style={{ color: isReposted ? "#10b981" : "inherit" }}
                       >
-                        <RepostIcon size={18} className="action-icon" />
-                        <span className="action-count">{post.reposts_count}</span>
+                        <RepostIcon size={19} className="action-icon" />
+                        {post.reposts_count > 0 && <span className="action-count">{post.reposts_count}</span>}
                       </button>
 
                       <button
@@ -1061,7 +1152,7 @@ export function CommunityFeed({
                         title="Share post"
                         aria-label="Share post"
                       >
-                        <ShareSendIcon size={18} className="action-icon" />
+                        <ShareSendIcon size={19} className="action-icon" />
                       </button>
                     </div>
                   </div>
@@ -1080,6 +1171,7 @@ export function CommunityFeed({
                     onShowNoProfileModal={() => setShowNoProfileModal(true)}
                     onSelectAuthorHandle={onSelectAuthorHandle}
                     onAddReply={handleAddReply}
+                    onDeleteReply={handleDeleteReply}
                   />
                 )}
               </div>
@@ -1092,9 +1184,6 @@ export function CommunityFeed({
       {showNoProfileModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#ffffff", borderRadius: "16px", padding: "28px 24px", maxWidth: "420px", width: "100%", textAlign: "center", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
-            <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#FFF1E8", display: "flex", alignItems: "center", justifyContent: "center", color: "#f85900", margin: "0 auto 16px" }}>
-              <MapPinIcon size={24} />
-            </div>
             <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", fontWeight: 800, color: "#111827" }}>Map Profile Required</h3>
             <p style={{ color: "#4b5563", fontSize: "14px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
               To post, reply, or interact in the community, you need to create your official map profile (either as <b>p/YourName</b> or <b>s/StartupName</b>) pinned on the map!

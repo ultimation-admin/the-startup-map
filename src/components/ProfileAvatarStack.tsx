@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Listing } from "@/lib/db";
-import { UserIcon, RocketIcon, PlusIcon, ChevronDownIcon, CheckIcon, SettingsIcon, LogOutIcon } from "./Icons";
+import { ChevronDownIcon, SettingsIcon, LogOutIcon } from "./Icons";
 import { useClerk } from "@clerk/nextjs";
 
 interface ProfileAvatarStackProps {
@@ -94,7 +94,6 @@ export function ProfileAvatarStack({
             }}
             title="Create your startup or person profile (+)"
           >
-            <PlusIcon size={13} />
             <span>Create Profile</span>
           </button>
         )}
@@ -195,7 +194,6 @@ export function ProfileAvatarStack({
                 }}
                 style={{ width: "100%", justifyContent: "center" }}
               >
-                <PlusIcon size={13} />
                 <span>+ Create Profile</span>
               </button>
             </div>
@@ -231,7 +229,6 @@ export function ProfileAvatarStack({
                       </span>
                     </div>
 
-                    {isSelected && <CheckIcon size={14} className="menu-item-check" />}
                   </button>
                 );
               })}
