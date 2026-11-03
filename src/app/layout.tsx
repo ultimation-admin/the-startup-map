@@ -1,6 +1,5 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
-import { Gabarito } from "next/font/google";
 import "./globals.css";
 
 import { fetchBrandingSettings } from "@/lib/db";
@@ -14,13 +13,6 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
 };
-
-const gabarito = Gabarito({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
-  variable: "--font-gabarito",
-  display: "swap",
-});
 
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await fetchBrandingSettings();
@@ -48,12 +40,10 @@ export default async function RootLayout({
   const branding = await fetchBrandingSettings();
   const logoUrl = branding.logo_url ? getPublicMediaUrl(branding.logo_url) : null;
   return (
-    <html lang="en" className={gabarito.variable}>
+    <html lang="en">
       <head>
         
         <script dangerouslySetInnerHTML={{ __html: SAFE_DOM_GUARD_SCRIPT }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://basemaps.cartocdn.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
         <link rel="preconnect" href="https://a.basemaps.cartocdn.com" crossOrigin="anonymous" />
@@ -66,7 +56,7 @@ export default async function RootLayout({
         <link rel="dns-prefetch" href="https://d.basemaps.cartocdn.com" />
         <link rel="preconnect" href="https://unpkg.com" crossOrigin="anonymous" />
       </head>
-      <body className={gabarito.className}>
+      <body>
 
         <ClerkProvider
           appearance={{
@@ -74,17 +64,17 @@ export default async function RootLayout({
               colorPrimary: "#f85900",
               colorBackground: "#ffffff",
               colorForeground: "#000000",
-              colorMutedForeground: "#5B6368",
-              colorInput: "#F0F2F5",
+              colorMutedForeground: "#757575",
+              colorInput: "#E3E3E3",
               colorInputForeground: "#000000",
               borderRadius: "10px",
-              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+              fontFamily: "Inter, Waldenburg, Inter, sans-serif",
             },
             elements: {
               formButtonPrimary:
-                "bg-[#f85900] hover:bg-[#e04f00] text-white font-semibold rounded-full h-10 text-sm normal-case shadow-xs transition-all duration-100 hover:scale-[1.01] active:scale-[0.98]",
+                "bg-[#f85900] hover:bg-[#e04f00] text-white font-semibold rounded-[10px] h-10 text-[13px] normal-case shadow-none transition-colors",
               formFieldInput:
-                "rounded-[10px] border border-transparent bg-[#F0F2F5] focus:bg-white focus:border-[#f85900] focus:ring-2 focus:ring-[#f85900]/25 text-[13.5px] px-3.5 h-10 text-black font-medium transition-all duration-100 placeholder:text-[#666666]",
+                "rounded-[10px] border border-[#E3E3E3] bg-[#E3E3E3] focus:bg-white focus:border-[#f85900] focus:ring-2 focus:ring-black text-[13px] px-4 h-10 text-black font-medium transition-colors placeholder:text-[#808080]",
               footerActionLink: "text-[#f85900] font-semibold hover:underline",
             },
           }}

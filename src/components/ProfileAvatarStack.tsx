@@ -18,7 +18,7 @@ interface ProfileAvatarStackProps {
 
 export function ProfileAvatarStack({
   userId,
-  userEmail = "user@startupmap.in",
+  userEmail = "",
   userInitials = "US",
   userAvatarUrl,
   activeListingId,
@@ -46,9 +46,19 @@ export function ProfileAvatarStack({
   };
 
   useEffect(() => {
-    loadUserProfiles();
-    const interval = setInterval(() => loadUserProfiles(), 15000);
-    return () => clearInterval(interval);
+    void loadUserProfiles();
+    let lastRefresh = Date.now();
+    const refreshWhenActive = () => {
+      if (document.hidden || Date.now() - lastRefresh < 30000) return;
+      lastRefresh = Date.now();
+      void loadUserProfiles();
+    };
+    window.addEventListener("focus", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+    return () => {
+      window.removeEventListener("focus", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
   }, [userId]);
 
   // Close dropdown on click outside
@@ -143,7 +153,7 @@ export function ProfileAvatarStack({
               )}
               <div className="account-details">
                 <span className="account-name">Account</span>
-                <span className="account-email">{userEmail}</span>
+                {userEmail && <span className="account-email">{userEmail}</span>}
               </div>
             </div>
 
@@ -184,7 +194,7 @@ export function ProfileAvatarStack({
           <div className="menu-section-header">{listings.length > 0 ? "YOUR PROFILE" : "PROFILE STATUS"}</div>
           {listings.length === 0 ? (
             <div className="menu-empty-state" style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
-              <span style={{ fontSize: "12px", color: "#64748b" }}>No profile created yet.</span>
+              <span style={{ fontSize: "12px", color: "#757575" }}>No profile created yet.</span>
               <button
                 type="button"
                 className="create-profile-icon-btn"
@@ -258,7 +268,7 @@ export function ProfileAvatarStack({
 
         .profile-dropdown-trigger:hover,
         .profile-dropdown-trigger.active {
-          border-color: #f85900;
+          border-color: #000000;
           box-shadow: 0 0 0 2px rgba(248, 89, 0, 0.2);
           background: #fafafa;
         }
@@ -292,12 +302,12 @@ export function ProfileAvatarStack({
         }
 
         .trigger-avatar-content.master {
-          background: #f85900;
+          background: #000000;
           color: #ffffff;
         }
 
         .trigger-chevron {
-          color: #666666;
+          color: #757575;
           transition: transform 0.2s ease;
         }
 
@@ -336,7 +346,7 @@ export function ProfileAvatarStack({
           font-weight: 700;
           letter-spacing: 0.8px;
           text-transform: uppercase;
-          color: #64748b;
+          color: #757575;
           padding: 4px 8px 2px 8px;
         }
 
@@ -372,7 +382,7 @@ export function ProfileAvatarStack({
           width: 28px;
           height: 28px;
           border-radius: 50%;
-          background: #f85900;
+          background: #000000;
           color: #ffffff;
           display: flex;
           align-items: center;
@@ -396,7 +406,7 @@ export function ProfileAvatarStack({
 
         .account-email {
           font-size: 10px;
-          color: #666666;
+          color: #757575;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -430,12 +440,12 @@ export function ProfileAvatarStack({
         }
 
         .account-icon-btn.logout {
-          color: #ef4444;
+          color: #000000;
         }
 
         .account-icon-btn.logout:hover {
           background: #fef2f2;
-          color: #dc2626;
+          color: #000000;
           border-color: rgba(239, 68, 68, 0.25);
         }
 
@@ -513,14 +523,14 @@ export function ProfileAvatarStack({
 
         .menu-item-meta {
           font-size: 10px;
-          color: #666666;
+          color: #757575;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
         .menu-item-check {
-          color: #f85900;
+          color: #000000;
           flex-shrink: 0;
         }
 
@@ -557,15 +567,15 @@ export function ProfileAvatarStack({
         }
 
         .menu-item-action-create:hover {
-          background: #FFF1E8;
-          color: #f85900;
+          background: #E3E3E3;
+          color: #000000;
         }
 
         .create-icon-badge {
           width: 24px;
           height: 24px;
           border-radius: 50%;
-          background: #f85900;
+          background: #000000;
           color: #ffffff;
           display: flex;
           align-items: center;

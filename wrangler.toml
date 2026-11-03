@@ -13,3 +13,19 @@ enabled = true
 [observability.logs]
 enabled = true
 invocation_logs = true
+
+[[ratelimits]]
+name = "PUBLIC_READ_LIMITER"
+namespace_id = "2026110201"
+
+[ratelimits.simple]
+limit = 120
+period = 60
+
+[[ratelimits]]
+name = "MEDIA_READ_LIMITER"
+namespace_id = "2026110202"
+
+[ratelimits.simple]
+limit = 45
+period = 60

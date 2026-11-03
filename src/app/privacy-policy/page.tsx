@@ -23,23 +23,23 @@ export default function PrivacyPolicyPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#F2F2F7] text-[#0f172a] font-sans antialiased selection:bg-[#f85900]/20">
+    <div className="min-h-screen bg-[#F2F2F7] text-[#000000] font-sans antialiased selection:bg-[#000000]/20">
       {/* Header Bar */}
-      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-black/5 px-6 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-[#E3E3E3] px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link href="/" className="flex items-center gap-1.5 no-underline">
             <span className="font-black text-xl tracking-tight text-black">THE</span>
-            <span className="bg-[#f85900] text-white font-black text-xs tracking-wider px-2 py-1 rounded-md uppercase">
+            <span className="bg-[#000000] text-white font-black text-xs tracking-wider px-2 py-1 rounded-md uppercase">
               STARTUP
             </span>
             <span className="font-black text-xl tracking-tight text-black">MAP</span>
           </Link>
-          <span className="text-[9.5px] font-extrabold text-[#e04f00] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 uppercase tracking-widest">
+          <span className="text-[9.5px] font-extrabold text-[#757575] bg-[#E3E3E3] px-2 py-0.5 rounded-full border border-[#E3E3E3] uppercase tracking-widest">
             BETA
           </span>
         </div>
 
-        <span className="text-[11px] font-black text-[#f85900] uppercase tracking-widest bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200/60 shadow-xs">
+        <span className="text-[11px] font-black text-[#000000] uppercase tracking-widest bg-[#E3E3E3] px-3.5 py-1.5 rounded-full border border-[#E3E3E3] shadow-none">
           LEGAL
         </span>
       </header>
@@ -57,23 +57,23 @@ export default function PrivacyPolicyPage() {
                 router.push("/");
               }
             }}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#e04f00] hover:underline bg-white border border-black/5 shadow-xs px-4 py-2 rounded-full transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#757575] hover:underline bg-white border border-[#E3E3E3] shadow-none px-4 py-2 rounded-full transition-all cursor-pointer"
           >
             ← Back
           </button>
         </div>
 
-        <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-black/5">
+        <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-xl border border-[#E3E3E3]">
           <div className="border-b border-slate-100 pb-6 mb-8 flex flex-row items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0f172a] tracking-tight">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#000000] tracking-tight">
                 Privacy Policy
               </h1>
-              <p className="text-xs font-semibold text-slate-500 mt-1">
+              <p className="text-xs font-semibold text-[#757575] mt-1">
                 The Startup Map Platform
               </p>
             </div>
-            <span className="text-[11px] font-black text-[#f85900] uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200/50">
+            <span className="text-[11px] font-black text-[#000000] uppercase tracking-widest bg-[#E3E3E3] px-3 py-1 rounded-full border border-[#E3E3E3]">
               LEGAL
             </span>
           </div>
@@ -91,10 +91,10 @@ export default function PrivacyPolicyPage() {
             </article>
           )}
 
-          <div className="border-t border-slate-100 mt-12 pt-6 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
+          <div className="border-t border-slate-100 mt-12 pt-6 flex flex-wrap items-center justify-between gap-4 text-xs text-[#757575]">
             <p className="m-0">© {new Date().getFullYear()} The Startup Map. All rights reserved.</p>
             <div className="flex gap-4">
-              <Link href="/terms-of-service" className="text-[#e04f00] font-bold hover:underline">
+              <Link href="/terms-of-service" className="text-[#757575] font-bold hover:underline">
                 Terms of Service →
               </Link>
             </div>

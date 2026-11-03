@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Listing } from "@/lib/db";
+import type { Listing } from "@/lib/db";
 import { DedicatedProfileStudio } from "./DedicatedProfileStudio";
 import { ProfileStudioSkeleton } from "./Skeletons";
 import { ArrowLeftIcon } from "./Icons";
@@ -9,6 +9,7 @@ import { ArrowLeftIcon } from "./Icons";
 interface UserProfilePanelProps {
   userId: string;
   isSignedIn: boolean;
+  isAuthLoaded: boolean;
   onRequireAuth: () => void;
   userEmail?: string;
   userInitials?: string;
@@ -21,8 +22,9 @@ interface UserProfilePanelProps {
 export function UserProfilePanel({
   userId,
   isSignedIn,
+  isAuthLoaded,
   onRequireAuth,
-  userEmail = "founder@startupmap.in",
+  userEmail = "",
   userInitials = "US",
   onClose,
   onAddListingClick,
@@ -46,7 +48,10 @@ export function UserProfilePanel({
       const res = await fetch(`/api/listings?owner_id=${encodeURIComponent(userId)}`, { signal });
       if (!res.ok) throw new Error("We couldn’t load your profile. Please try again.");
       const data = await res.json();
-      const userListings: Listing[] = Array.isArray(data) ? data : (data.listings || []);
+      const responseListings: Listing[] = Array.isArray(data) ? data : (data.listings || []);
+      const userListings = Array.from(
+        new Map(responseListings.map((listing) => [listing.id, listing])).values()
+      );
       setListings(userListings);
       setSelectedProfileId((current) =>
         userListings.some((listing) => listing.id === current) ? current : (userListings[0]?.id ?? null)
@@ -74,6 +79,8 @@ export function UserProfilePanel({
   }, [isSignedIn, userId, loadListings]);
 
   const activeProfile = listings.find((listing) => listing.id === selectedProfileId) || listings[0] || null;
+
+  if (!isAuthLoaded) return <ProfileStudioSkeleton />;
 
   if (!isSignedIn) {
     return (
@@ -106,7 +113,7 @@ export function UserProfilePanel({
     return (
       <div className="profile-panel-stack">
         {listings.length > 1 && (
-          <div className="profile-switcher" aria-label="Switch profile">
+          <div className="profile-switcher" role="group" aria-label="Switch profile">
             <span>PROFILES</span>
             {listings.map((listing) => (
               <button
@@ -122,6 +129,7 @@ export function UserProfilePanel({
           </div>
         )}
         <DedicatedProfileStudio
+          key={activeProfile.id}
           profile={activeProfile}
           canManageProfile={activeProfile.owner_id === userId}
           canManageArticles={activeProfile.owner_id === userId}
@@ -158,7 +166,7 @@ export function UserProfilePanel({
           ) : (
             <button type="button" className="profile-setup-primary" onClick={onAddListingClick}>Create your profile</button>
           )}
-          <p className="profile-setup-note">Signed in as {userEmail}</p>
+          {userEmail && <p className="profile-setup-note">Signed in as {userEmail}</p>}
         </div>
       </section>
     </main>

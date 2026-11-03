@@ -637,7 +637,7 @@ export default function TonyStarkAdminPage() {
               gap: "6px",
               background: "rgba(16, 185, 129, 0.15)",
               border: "1px solid rgba(16, 185, 129, 0.3)",
-              color: "#10b981",
+              color: "#757575",
               padding: "6px 14px",
               borderRadius: "100px",
               fontSize: "11px",
@@ -672,7 +672,7 @@ export default function TonyStarkAdminPage() {
               <div
                 style={{
                   background: "rgba(239, 68, 68, 0.15)",
-                  color: "#ef4444",
+                  color: "#000000",
                   padding: "12px 16px",
                   borderRadius: "12px",
                   fontSize: "13px",
@@ -707,7 +707,7 @@ export default function TonyStarkAdminPage() {
             <Link
               href="/"
               style={{
-                color: "#64748b",
+                color: "#757575",
                 fontSize: "13px",
                 textDecoration: "none",
                 fontWeight: 600,
@@ -722,7 +722,7 @@ export default function TonyStarkAdminPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f0eee6", color: "#111827", fontFamily: "'DM Sans', sans-serif", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: "#f0eee6", color: "#000000", fontFamily: "'DM Sans', sans-serif", display: "flex", flexDirection: "column" }}>
       {/* HEADER */}
       <header
         style={{
@@ -736,21 +736,21 @@ export default function TonyStarkAdminPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Link href="/" style={{ textDecoration: "none", color: "#111827", fontWeight: 800, fontSize: "18px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ color: "#10b981", fontSize: "20px" }}>|||</span> THE STARTUP MAP
+          <Link href="/" style={{ textDecoration: "none", color: "#000000", fontWeight: 800, fontSize: "18px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ color: "#757575", fontSize: "20px" }}>|||</span> THE STARTUP MAP
           </Link>
-          <span style={{ background: "rgba(16, 185, 129, 0.12)", color: "#059669", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "2px 8px", borderRadius: "9999px", fontSize: "9.5px", fontWeight: 800, letterSpacing: "0.8px" }}>
+          <span style={{ background: "rgba(16, 185, 129, 0.12)", color: "#757575", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "2px 8px", borderRadius: "9999px", fontSize: "9.5px", fontWeight: 800, letterSpacing: "0.8px" }}>
             BETA
           </span>
-          <span style={{ background: "#111827", color: "#ffffff", padding: "4px 10px", borderRadius: "9999px", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
+          <span style={{ background: "#000000", color: "#ffffff", padding: "4px 10px", borderRadius: "9999px", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
             ADMIN CONTROL PLATFORM
           </span>
         </div>
 
         {/* SYSTEM STATUS & CONTROLS */}
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#16a34a", background: "#e6f8ed", padding: "6px 12px", borderRadius: "9999px", fontWeight: 700 }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }} /> D1 Engine Sync (12ms)
+          <span style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#757575", background: "#e6f8ed", padding: "6px 12px", borderRadius: "9999px", fontWeight: 700 }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#757575" }} /> D1 Engine Sync (12ms)
           </span>
 
           <button
@@ -763,7 +763,7 @@ export default function TonyStarkAdminPage() {
               padding: "8px 14px",
               borderRadius: "8px",
               border: "none",
-              background: "#10b981",
+              background: "#757575",
               color: "#ffffff",
               fontWeight: 800,
               fontSize: "12px",
@@ -784,7 +784,7 @@ export default function TonyStarkAdminPage() {
               borderRadius: "8px",
               border: "none",
               background: "#eeeef2",
-              color: "#111827",
+              color: "#000000",
               fontWeight: 600,
               fontSize: "12px",
               cursor: "pointer",
@@ -799,7 +799,7 @@ export default function TonyStarkAdminPage() {
               padding: "8px 14px",
               borderRadius: "8px",
               background: "#eeeef2",
-              color: "#111827",
+              color: "#000000",
               textDecoration: "none",
               fontWeight: 600,
               fontSize: "12px",
@@ -816,7 +816,7 @@ export default function TonyStarkAdminPage() {
                 borderRadius: "8px",
                 border: "1px solid rgba(239, 68, 68, 0.3)",
                 background: "#fee2e2",
-                color: "#dc2626",
+                color: "#000000",
                 fontWeight: 700,
                 fontSize: "12px",
                 cursor: "pointer",
@@ -857,7 +857,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "dashboard" ? "#111827" : "transparent",
+              background: activeSection === "dashboard" ? "#000000" : "transparent",
               color: activeSection === "dashboard" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -878,7 +878,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "profiles" ? "#111827" : "transparent",
+              background: activeSection === "profiles" ? "#000000" : "transparent",
               color: activeSection === "profiles" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -890,7 +890,7 @@ export default function TonyStarkAdminPage() {
               <MapPinIcon size={16} /> Profiles & Approvals
             </span>
             {pendingCount > 0 && (
-              <span style={{ background: "#ef4444", color: "#ffffff", padding: "2px 8px", borderRadius: "9999px", fontSize: "11px", fontWeight: 800 }}>
+              <span style={{ background: "#000000", color: "#ffffff", padding: "2px 8px", borderRadius: "9999px", fontSize: "11px", fontWeight: 800 }}>
                 {pendingCount}
               </span>
             )}
@@ -906,7 +906,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "users" ? "#111827" : "transparent",
+              background: activeSection === "users" ? "#000000" : "transparent",
               color: activeSection === "users" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -927,7 +927,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "communities" ? "#111827" : "transparent",
+              background: activeSection === "communities" ? "#000000" : "transparent",
               color: activeSection === "communities" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -948,7 +948,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "posts" ? "#111827" : "transparent",
+              background: activeSection === "posts" ? "#000000" : "transparent",
               color: activeSection === "posts" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -969,7 +969,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "branding" ? "#111827" : "transparent",
+              background: activeSection === "branding" ? "#000000" : "transparent",
               color: activeSection === "branding" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -990,7 +990,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "legal" ? "#111827" : "transparent",
+              background: activeSection === "legal" ? "#000000" : "transparent",
               color: activeSection === "legal" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -1011,7 +1011,7 @@ export default function TonyStarkAdminPage() {
               padding: "12px 16px",
               borderRadius: "10px",
               border: "none",
-              background: activeSection === "access" ? "#111827" : "transparent",
+              background: activeSection === "access" ? "#000000" : "transparent",
               color: activeSection === "access" ? "#ffffff" : "#4b5563",
               fontWeight: 600,
               fontSize: "14px",
@@ -1042,9 +1042,9 @@ export default function TonyStarkAdminPage() {
                   <h2 style={{ margin: "8px 0 0 0", fontSize: "34px", fontWeight: 800, color: "#d97706" }}>{pendingCount}</h2>
                 </div>
 
-                <div style={{ background: "#ffffff", padding: "24px", borderRadius: "16px", boxShadow: "0 2px 10px rgba(0,0,0,0.03)", borderLeft: "4px solid #10b981" }}>
+                <div style={{ background: "#ffffff", padding: "24px", borderRadius: "16px", boxShadow: "0 2px 10px rgba(0,0,0,0.03)", borderLeft: "4px solid #757575" }}>
                   <small style={{ color: "#6b7280", fontSize: "12px", fontWeight: 700, textTransform: "uppercase" }}>Live Map Profiles</small>
-                  <h2 style={{ margin: "8px 0 0 0", fontSize: "34px", fontWeight: 800, color: "#16a34a" }}>{verifiedCount}</h2>
+                  <h2 style={{ margin: "8px 0 0 0", fontSize: "34px", fontWeight: 800, color: "#757575" }}>{verifiedCount}</h2>
                 </div>
 
                 <div style={{ background: "#ffffff", padding: "24px", borderRadius: "16px", boxShadow: "0 2px 10px rgba(0,0,0,0.03)", borderLeft: "4px solid #6366f1" }}>
@@ -1072,7 +1072,7 @@ export default function TonyStarkAdminPage() {
                             <span style={{ color: "#6b7280" }}>{count} profiles ({pct}%)</span>
                           </div>
                           <div style={{ height: "8px", background: "#eeeef2", borderRadius: "4px", overflow: "hidden" }}>
-                            <div style={{ height: "100%", width: `${pct}%`, background: "#10b981", borderRadius: "4px" }} />
+                            <div style={{ height: "100%", width: `${pct}%`, background: "#757575", borderRadius: "4px" }} />
                           </div>
                         </div>
                       );
@@ -1085,7 +1085,7 @@ export default function TonyStarkAdminPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
                       <span style={{ fontWeight: 600 }}>Startups (`s/`)</span>
-                      <span style={{ fontWeight: 800, background: "#e6f8ed", color: "#16a34a", padding: "4px 12px", borderRadius: "9999px" }}>{startupProfilesCount}</span>
+                      <span style={{ fontWeight: 800, background: "#e6f8ed", color: "#757575", padding: "4px 12px", borderRadius: "9999px" }}>{startupProfilesCount}</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
                       <span style={{ fontWeight: 600 }}>People (`p/`)</span>
@@ -1093,7 +1093,7 @@ export default function TonyStarkAdminPage() {
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
                       <span style={{ fontWeight: 600 }}>Rejected Submissions</span>
-                      <span style={{ fontWeight: 800, background: "#fee2e2", color: "#dc2626", padding: "4px 12px", borderRadius: "9999px" }}>{rejectedCount}</span>
+                      <span style={{ fontWeight: 800, background: "#fee2e2", color: "#000000", padding: "4px 12px", borderRadius: "9999px" }}>{rejectedCount}</span>
                     </div>
                   </div>
                 </div>
@@ -1122,7 +1122,7 @@ export default function TonyStarkAdminPage() {
                     padding: "10px 18px",
                     borderRadius: "10px",
                     border: "none",
-                    background: "#10b981",
+                    background: "#757575",
                     color: "#ffffff",
                     fontWeight: 800,
                     fontSize: "13px",
@@ -1143,7 +1143,7 @@ export default function TonyStarkAdminPage() {
                       padding: "8px 16px",
                       borderRadius: "8px",
                       border: "none",
-                      background: profileFilterState === "pending" ? "#111827" : "transparent",
+                      background: profileFilterState === "pending" ? "#000000" : "transparent",
                       color: profileFilterState === "pending" ? "#ffffff" : "#4b5563",
                       fontWeight: 600,
                       cursor: "pointer",
@@ -1159,7 +1159,7 @@ export default function TonyStarkAdminPage() {
                       padding: "8px 16px",
                       borderRadius: "8px",
                       border: "none",
-                      background: profileFilterState === "verified" ? "#111827" : "transparent",
+                      background: profileFilterState === "verified" ? "#000000" : "transparent",
                       color: profileFilterState === "verified" ? "#ffffff" : "#4b5563",
                       fontWeight: 600,
                       cursor: "pointer",
@@ -1175,7 +1175,7 @@ export default function TonyStarkAdminPage() {
                       padding: "8px 16px",
                       borderRadius: "8px",
                       border: "none",
-                      background: profileFilterState === "rejected" ? "#111827" : "transparent",
+                      background: profileFilterState === "rejected" ? "#000000" : "transparent",
                       color: profileFilterState === "rejected" ? "#ffffff" : "#4b5563",
                       fontWeight: 600,
                       cursor: "pointer",
@@ -1191,7 +1191,7 @@ export default function TonyStarkAdminPage() {
                       padding: "8px 16px",
                       borderRadius: "8px",
                       border: "none",
-                      background: profileFilterState === "all" ? "#111827" : "transparent",
+                      background: profileFilterState === "all" ? "#000000" : "transparent",
                       color: profileFilterState === "all" ? "#ffffff" : "#4b5563",
                       fontWeight: 600,
                       cursor: "pointer",
@@ -1274,7 +1274,7 @@ export default function TonyStarkAdminPage() {
                                     width: "38px",
                                     height: "38px",
                                     borderRadius: item.type === "person" ? "50%" : "8px",
-                                    background: item.logo_url ? "transparent" : "#10b981",
+                                    background: item.logo_url ? "transparent" : "#757575",
                                     color: "#ffffff",
                                     display: "flex",
                                     alignItems: "center",
@@ -1292,7 +1292,7 @@ export default function TonyStarkAdminPage() {
                                   )}
                                 </div>
                                 <div>
-                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#16a34a", background: "#e6f8ed", padding: "2px 6px", borderRadius: "4px" }}>
+                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#757575", background: "#e6f8ed", padding: "2px 6px", borderRadius: "4px" }}>
                                     {handle}
                                   </span>
                                   <div style={{ fontWeight: 800, fontSize: "14px", marginTop: "2px" }}>{item.name}</div>
@@ -1321,7 +1321,7 @@ export default function TonyStarkAdminPage() {
                                   fontWeight: 700,
                                   textTransform: "uppercase",
                                   background: item.review_state === "verified" ? "#dcfce7" : item.review_state === "rejected" ? "#fee2e2" : "#fef3c7",
-                                  color: item.review_state === "verified" ? "#16a34a" : item.review_state === "rejected" ? "#dc2626" : "#d97706",
+                                  color: item.review_state === "verified" ? "#757575" : item.review_state === "rejected" ? "#000000" : "#d97706",
                                 }}
                               >
                                 {item.review_state || "pending"}
@@ -1331,12 +1331,12 @@ export default function TonyStarkAdminPage() {
                             <td style={{ padding: "14px 16px" }}>
                               <div style={{ display: "flex", gap: "8px" }}>
                                 {item.website && (
-                                  <a href={item.website} target="_blank" rel="noreferrer" title="Website" style={{ color: "#3b82f6", textDecoration: "none", fontWeight: 600, fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <a href={item.website} target="_blank" rel="noreferrer" title="Website" style={{ color: "#757575", textDecoration: "none", fontWeight: 600, fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                     <GlobeIcon size={13} /> Web
                                   </a>
                                 )}
                                 {item.tweet_url && (
-                                  <a href={item.tweet_url} target="_blank" rel="noreferrer" title="Proof Tweet" style={{ color: "#16a34a", textDecoration: "none", fontWeight: 600, fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <a href={item.tweet_url} target="_blank" rel="noreferrer" title="Proof Tweet" style={{ color: "#757575", textDecoration: "none", fontWeight: 600, fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                     <SparklesIcon size={13} /> Proof
                                   </a>
                                 )}
@@ -1350,7 +1350,7 @@ export default function TonyStarkAdminPage() {
                                     type="button"
                                     disabled={actionLoadingId === item.id}
                                     onClick={() => handleApproveListing(item.id)}
-                                    style={{ padding: "6px 12px", borderRadius: "6px", border: "none", background: "#10b981", color: "#ffffff", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
+                                    style={{ padding: "6px 12px", borderRadius: "6px", border: "none", background: "#757575", color: "#ffffff", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
                                   >
                                     Approve
                                   </button>
@@ -1360,7 +1360,7 @@ export default function TonyStarkAdminPage() {
                                     type="button"
                                     disabled={actionLoadingId === item.id}
                                     onClick={() => handleRejectListing(item.id)}
-                                    style={{ padding: "6px 12px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#dc2626", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
+                                    style={{ padding: "6px 12px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#000000", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
                                   >
                                     Reject
                                   </button>
@@ -1455,7 +1455,7 @@ export default function TonyStarkAdminPage() {
                           </td>
                           <td style={{ padding: "14px 16px", color: "#4b5563" }}>{u.email}</td>
                           <td style={{ padding: "14px 16px" }}>
-                            <span style={{ padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", background: u.role === "admin" ? "#111827" : u.role === "moderator" ? "#4f46e5" : "#eeeef2", color: u.role === "admin" || u.role === "moderator" ? "#ffffff" : "#374151" }}>
+                            <span style={{ padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", background: u.role === "admin" ? "#000000" : u.role === "moderator" ? "#4f46e5" : "#eeeef2", color: u.role === "admin" || u.role === "moderator" ? "#ffffff" : "#374151" }}>
                               {u.role || "user"}
                             </span>
                           </td>
@@ -1490,10 +1490,10 @@ export default function TonyStarkAdminPage() {
 
               {/* CREATE COMMUNITY FORM CARD */}
               <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", boxShadow: "0 2px 10px rgba(0,0,0,0.03)", marginBottom: "24px" }}>
-                <h3 style={{ margin: "0 0 14px 0", fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>+ Create New Community</h3>
+                <h3 style={{ margin: "0 0 14px 0", fontSize: "16px", fontWeight: 800, color: "#000000" }}>+ Create New Community</h3>
                 <form onSubmit={handleCreateCommunity} style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "4px", textTransform: "uppercase" }}>COMMUNITY HANDLE / NAME</label>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#757575", marginBottom: "4px", textTransform: "uppercase" }}>COMMUNITY HANDLE / NAME</label>
                     <input
                       type="text"
                       required
@@ -1504,7 +1504,7 @@ export default function TonyStarkAdminPage() {
                     />
                   </div>
                   <div style={{ flex: 2 }}>
-                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#64748b", marginBottom: "4px", textTransform: "uppercase" }}>DESCRIPTION (OPTIONAL)</label>
+                    <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#757575", marginBottom: "4px", textTransform: "uppercase" }}>DESCRIPTION (OPTIONAL)</label>
                     <input
                       type="text"
                       placeholder="e.g. Discussions for founders, updates & launch announcements"
@@ -1516,7 +1516,7 @@ export default function TonyStarkAdminPage() {
                   <button
                     type="submit"
                     disabled={isCreatingComm || !newCommName.trim()}
-                    style={{ padding: "10px 22px", borderRadius: "8px", border: "none", background: "#10b981", color: "#ffffff", fontWeight: 700, fontSize: "14px", cursor: "pointer", height: "42px" }}
+                    style={{ padding: "10px 22px", borderRadius: "8px", border: "none", background: "#757575", color: "#ffffff", fontWeight: 700, fontSize: "14px", cursor: "pointer", height: "42px" }}
                   >
                     {isCreatingComm ? "Creating..." : "+ Add Community"}
                   </button>
@@ -1525,7 +1525,7 @@ export default function TonyStarkAdminPage() {
 
               {/* EXISTING COMMUNITIES TABLE */}
               <div style={{ background: "#ffffff", borderRadius: "16px", padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.03)", overflowX: "auto" }}>
-                <div style={{ fontWeight: 800, fontSize: "14px", color: "#0f172a", marginBottom: "16px" }}>
+                <div style={{ fontWeight: 800, fontSize: "14px", color: "#000000", marginBottom: "16px" }}>
                   EXISTING COMMUNITIES ({communities.length})
                 </div>
                 <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
@@ -1546,7 +1546,7 @@ export default function TonyStarkAdminPage() {
                     ) : (
                       communities.map((c) => (
                         <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "14px 16px", fontWeight: 800, color: "#10b981", fontSize: "15px" }}>
+                          <td style={{ padding: "14px 16px", fontWeight: 800, color: "#757575", fontSize: "15px" }}>
                             /{c.name.replace(/^\//, "")}
                           </td>
                           <td style={{ padding: "14px 16px", color: "#475569" }}>{c.description || "—"}</td>
@@ -1554,7 +1554,7 @@ export default function TonyStarkAdminPage() {
                             <button
                               type="button"
                               onClick={() => handleDeleteCommunity(c.id)}
-                              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#dc2626", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#000000", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
                             >
                               <TrashIcon size={12} /> Delete Community
                             </button>
@@ -1615,7 +1615,7 @@ export default function TonyStarkAdminPage() {
                     ) : (
                       filteredPosts.map((p) => (
                         <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "14px 16px", fontWeight: 700, color: "#16a34a" }}>{p.user_name}</td>
+                          <td style={{ padding: "14px 16px", fontWeight: 700, color: "#757575" }}>{p.user_name}</td>
                           <td style={{ padding: "14px 16px" }}>
                             <span style={{ background: "#eeeef2", padding: "4px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 600 }}>
                               {p.community_name}
@@ -1628,7 +1628,7 @@ export default function TonyStarkAdminPage() {
                               type="button"
                               disabled={actionLoadingId === p.id}
                               onClick={() => handleDeletePost(p.id)}
-                              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#dc2626", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#000000", fontWeight: 700, cursor: "pointer", fontSize: "12px" }}
                             >
                               <TrashIcon size={12} /> Delete Post
                             </button>
@@ -1664,7 +1664,7 @@ export default function TonyStarkAdminPage() {
                     padding: "10px 20px",
                     borderRadius: "10px",
                     border: "none",
-                    background: "#10b981",
+                    background: "#757575",
                     color: "#ffffff",
                     fontWeight: 800,
                     fontSize: "14px",
@@ -1689,10 +1689,10 @@ export default function TonyStarkAdminPage() {
                   {/* APP LOGO CARD */}
                   <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", border: "1px solid #e5e7eb", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-                      <span style={{ color: "#10b981", display: "inline-flex" }}>
+                      <span style={{ color: "#757575", display: "inline-flex" }}>
                         <SparklesIcon size={20} />
                       </span>
-                      <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#111827" }}>Application Logo</h3>
+                      <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#000000" }}>Application Logo</h3>
                     </div>
                     <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#6b7280" }}>
                       Displayed in top header bar. Recommended height around 32-40px (SVG, WebP, PNG, JPEG). Automatically scales with preserved proportions.
@@ -1704,14 +1704,14 @@ export default function TonyStarkAdminPage() {
                         <img src={getPublicMediaUrl(logoUrl)!} alt="App Logo Preview" style={{ maxHeight: "36px", maxWidth: "160px", width: "auto", height: "auto", objectFit: "contain" }} />
                       ) : (
                         <div style={{ color: "#94a3b8", fontSize: "13px", fontWeight: 600 }}>
-                          Default Text Logo: <span style={{ color: "#10b981", fontWeight: 800 }}>The Startup Map</span>
+                          Default Text Logo: <span style={{ color: "#757575", fontWeight: 800 }}>The Startup Map</span>
                         </div>
                       )}
                     </div>
 
                     {/* UPLOAD & RESET ACTIONS */}
                     <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                      <label style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 14px", borderRadius: "10px", background: "#111827", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: isUploadingLogo ? "wait" : "pointer" }}>
+                      <label style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 14px", borderRadius: "10px", background: "#000000", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: isUploadingLogo ? "wait" : "pointer" }}>
                         <UploadIcon size={14} /> {isUploadingLogo ? "Uploading Logo..." : "Upload Custom Logo"}
                         <input
                           type="file"
@@ -1729,7 +1729,7 @@ export default function TonyStarkAdminPage() {
                         <button
                           type="button"
                           onClick={() => setLogoUrl("")}
-                          style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#ffffff", color: "#ef4444", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                          style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#ffffff", color: "#000000", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
                         >
                           Reset Default
                         </button>
@@ -1748,10 +1748,10 @@ export default function TonyStarkAdminPage() {
                   {/* APP FAVICON CARD */}
                   <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", border: "1px solid #e5e7eb", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-                      <span style={{ color: "#3b82f6", display: "inline-flex" }}>
+                      <span style={{ color: "#757575", display: "inline-flex" }}>
                         <GlobeIcon size={20} />
                       </span>
-                      <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#111827" }}>Browser Favicon</h3>
+                      <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#000000" }}>Browser Favicon</h3>
                     </div>
                     <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "#6b7280" }}>
                       Displayed in browser tab header (ICO, PNG, SVG, 32x32px recommended).
@@ -1771,7 +1771,7 @@ export default function TonyStarkAdminPage() {
 
                     {/* UPLOAD & RESET ACTIONS */}
                     <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                      <label style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 14px", borderRadius: "10px", background: "#111827", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: isUploadingFavicon ? "wait" : "pointer" }}>
+                      <label style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px 14px", borderRadius: "10px", background: "#000000", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: isUploadingFavicon ? "wait" : "pointer" }}>
                         <UploadIcon size={14} /> {isUploadingFavicon ? "Uploading Favicon..." : "Upload Custom Favicon"}
                         <input
                           type="file"
@@ -1789,7 +1789,7 @@ export default function TonyStarkAdminPage() {
                         <button
                           type="button"
                           onClick={() => setFaviconUrl("")}
-                          style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#ffffff", color: "#ef4444", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                          style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e5e7eb", background: "#ffffff", color: "#000000", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
                         >
                           Reset Default
                         </button>
@@ -1831,7 +1831,7 @@ export default function TonyStarkAdminPage() {
                     padding: "10px 20px",
                     borderRadius: "10px",
                     border: "none",
-                    background: "#10b981",
+                    background: "#757575",
                     color: "#ffffff",
                     fontWeight: 800,
                     fontSize: "14px",
@@ -1858,7 +1858,7 @@ export default function TonyStarkAdminPage() {
                     padding: "10px 20px",
                     borderRadius: "8px",
                     border: "none",
-                    background: selectedLegalDoc === "privacy_policy" ? "#111827" : "#f3f4f6",
+                    background: selectedLegalDoc === "privacy_policy" ? "#000000" : "#f3f4f6",
                     color: selectedLegalDoc === "privacy_policy" ? "#ffffff" : "#4b5563",
                     fontWeight: 700,
                     fontSize: "14px",
@@ -1875,7 +1875,7 @@ export default function TonyStarkAdminPage() {
                     padding: "10px 20px",
                     borderRadius: "8px",
                     border: "none",
-                    background: selectedLegalDoc === "terms_of_service" ? "#111827" : "#f3f4f6",
+                    background: selectedLegalDoc === "terms_of_service" ? "#000000" : "#f3f4f6",
                     color: selectedLegalDoc === "terms_of_service" ? "#ffffff" : "#4b5563",
                     fontWeight: 700,
                     fontSize: "14px",
@@ -1931,7 +1931,7 @@ export default function TonyStarkAdminPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
-                  <h2 style={{ fontSize: "24px", fontWeight: 800, margin: 0, color: "#111827" }}>
+                  <h2 style={{ fontSize: "24px", fontWeight: 800, margin: 0, color: "#000000" }}>
                     Access Management & Security Clearance
                   </h2>
                   <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: "14px" }}>
@@ -1942,7 +1942,7 @@ export default function TonyStarkAdminPage() {
                 <span
                   style={{
                     background: "rgba(16, 185, 129, 0.15)",
-                    color: "#059669",
+                    color: "#757575",
                     border: "1px solid rgba(16, 185, 129, 0.3)",
                     padding: "6px 14px",
                     borderRadius: "100px",
@@ -1970,7 +1970,7 @@ export default function TonyStarkAdminPage() {
                   gap: "16px",
                 }}
               >
-                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#111827" }}>
+                <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800, color: "#000000" }}>
                   Active Master Admin Authorization Profile
                 </h3>
 
@@ -1982,25 +1982,25 @@ export default function TonyStarkAdminPage() {
                   }}
                 >
                   <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#757575", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       STRICT AUTHORIZED EMAIL
                     </div>
-                    <div style={{ fontSize: "15px", fontWeight: 800, color: "#10b981", marginTop: "4px" }}>
+                    <div style={{ fontSize: "15px", fontWeight: 800, color: "#757575", marginTop: "4px" }}>
                       ultimation.teams@gmail.com
                     </div>
                   </div>
 
                   <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#757575", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       ACTIVE LOGGED-IN EMAIL
                     </div>
-                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a", marginTop: "4px" }}>
+                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#000000", marginTop: "4px" }}>
                       {clerkUser?.primaryEmailAddress?.emailAddress || "Not Authenticated"}
                     </div>
                   </div>
 
                   <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#757575", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       CLERK USER ID
                     </div>
                     <div style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 600, color: "#334155", marginTop: "6px" }}>
@@ -2009,10 +2009,10 @@ export default function TonyStarkAdminPage() {
                   </div>
 
                   <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#757575", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       CLEARANCE STATUS
                     </div>
-                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <div style={{ fontSize: "13px", fontWeight: 800, color: "#757575", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
                       <CheckIcon size={14} /> LEVEL 5 MASTER ADMIN
                     </div>
                   </div>
@@ -2029,17 +2029,17 @@ export default function TonyStarkAdminPage() {
                   boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
                 }}
               >
-                <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 800, color: "#111827" }}>
+                <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 800, color: "#000000" }}>
                   Security Policies & Access Constraints
                 </h3>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
-                    <span style={{ color: "#10b981", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
+                    <span style={{ color: "#757575", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
                       <CheckIcon size={18} />
                     </span>
                     <div>
-                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>Strict Single-User Access Lock</div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#000000" }}>Strict Single-User Access Lock</div>
                       <div style={{ fontSize: "12.5px", color: "#6b7280", marginTop: "2px" }}>
                         Only accounts authenticated via Clerk OAuth with email address <code>ultimation.teams@gmail.com</code> are granted Level 5 access to platform endpoints and database actions.
                       </div>
@@ -2047,11 +2047,11 @@ export default function TonyStarkAdminPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
-                    <span style={{ color: "#10b981", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
+                    <span style={{ color: "#757575", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
                       <CheckIcon size={18} />
                     </span>
                     <div>
-                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>Middleware Session Interception</div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#000000" }}>Middleware Session Interception</div>
                       <div style={{ fontSize: "12.5px", color: "#6b7280", marginTop: "2px" }}>
                         Clerk middleware (<code>src/middleware.ts</code>) enforces session validation on all incoming server routes and API endpoints.
                       </div>
@@ -2059,11 +2059,11 @@ export default function TonyStarkAdminPage() {
                   </div>
 
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "12px", background: "#f9fafb", borderRadius: "10px" }}>
-                    <span style={{ color: "#10b981", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
+                    <span style={{ color: "#757575", marginTop: "2px", flexShrink: 0, display: "inline-flex" }}>
                       <CheckIcon size={18} />
                     </span>
                     <div>
-                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#111827" }}>Multi-Source Verification Layer</div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#000000" }}>Multi-Source Verification Layer</div>
                       <div style={{ fontSize: "12.5px", color: "#6b7280", marginTop: "2px" }}>
                         Server security clearance evaluates JWT session claims, Clerk SDK user records, and Cloudflare D1 profiles to ensure uninterrupted admin access.
                       </div>
@@ -2080,7 +2080,7 @@ export default function TonyStarkAdminPage() {
       {editingListing && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <form onSubmit={handleSaveEditProfile} style={{ background: "#ffffff", borderRadius: "16px", padding: "28px", maxWidth: "480px", width: "100%", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
-            <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", fontWeight: 800, color: "#111827" }}>Edit Map Profile</h3>
+            <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", fontWeight: 800, color: "#000000" }}>Edit Map Profile</h3>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "14px", marginBottom: "20px" }}>
               <div>
@@ -2109,7 +2109,7 @@ export default function TonyStarkAdminPage() {
               <button type="button" onClick={() => setEditingListing(null)} style={{ padding: "10px 16px", borderRadius: "8px", border: "none", background: "#eeeef2", color: "#374151", fontWeight: 600, cursor: "pointer" }}>
                 Cancel
               </button>
-              <button type="submit" style={{ padding: "10px 18px", borderRadius: "8px", border: "none", background: "#10b981", color: "#ffffff", fontWeight: 800, cursor: "pointer" }}>
+              <button type="submit" style={{ padding: "10px 18px", borderRadius: "8px", border: "none", background: "#757575", color: "#ffffff", fontWeight: 800, cursor: "pointer" }}>
                 Save Profile
               </button>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArticleBlock, Listing, ProfileArticle } from "@/lib/db";
+import type { ArticleBlock, Listing, ProfileArticle } from "@/lib/db";
 import { uploadFileToR2 } from "@/lib/uploadClient";
 
 interface ProfileArticlesProps {
@@ -11,6 +11,7 @@ interface ProfileArticlesProps {
 
 type TextBlockType = "paragraph" | "h1" | "h2" | "h3";
 type EditorCommand = TextBlockType | "image" | "link";
+const supportedArticleImageTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
 
 const commands: Array<{ type: EditorCommand; label: string; description: string }> = [
   { type: "h1", label: "H1", description: "Large heading" },
@@ -57,21 +58,25 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
   const [articles, setArticles] = useState<ProfileArticle[]>([]);
   const [canManage, setCanManage] = useState(canManageArticles);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<ArticleBlock[]>([]);
   const [slashMenuBlockId, setSlashMenuBlockId] = useState<string | null>(null);
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [uploadingBlockId, setUploadingBlockId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
-  const loadArticles = useCallback(async () => {
+  const loadArticles = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const res = await fetch(`/api/articles?profile_id=${encodeURIComponent(profile.id)}`, { cache: "no-store" });
+      const res = await fetch(`/api/articles?profile_id=${encodeURIComponent(profile.id)}`, { cache: "no-store", signal });
       if (!res.ok) throw new Error("Articles could not be loaded.");
       const data = await res.json();
+      if (signal?.aborted) return;
       const loaded: ProfileArticle[] = data.articles || [];
       setArticles(loaded);
       setCanManage(canManageArticles || Boolean(data.can_manage));
@@ -86,9 +91,10 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
         }
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Articles could not be loaded.");
+      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+      setLoadError(error instanceof Error ? error.message : "Articles could not be loaded.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [canManageArticles, profile.id]);
 
@@ -103,8 +109,15 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
   }, [profile.id]);
 
   useEffect(() => {
-    void loadArticles();
+    const controller = new AbortController();
+    void loadArticles(controller.signal);
+    return () => controller.abort();
   }, [loadArticles]);
+
+  useEffect(() => {
+    if (!slashMenuBlockId) return;
+    document.querySelector<HTMLButtonElement>(".profile-article-slash-menu button")?.focus();
+  }, [slashMenuBlockId]);
 
   useEffect(() => {
     if (!focusBlockId) return;
@@ -157,27 +170,33 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
   };
 
   const applyCommand = (id: string, command: EditorCommand) => {
+    const nextParagraph = command === "image" || command === "link" ? blankParagraph() : null;
     setBlocks((current) => {
       const index = current.findIndex((block) => block.id === id);
       if (index < 0) return current;
       const next = [...current];
       if (command === "image") {
         next[index] = { id, type: "image", url: "", alt: "" };
-        next.splice(index + 1, 0, blankParagraph());
+        if (nextParagraph) next.splice(index + 1, 0, nextParagraph);
       } else if (command === "link") {
         next[index] = { id, type: "link", url: "", label: "" };
-        next.splice(index + 1, 0, blankParagraph());
+        if (nextParagraph) next.splice(index + 1, 0, nextParagraph);
       } else next[index] = { id, type: command, text: "" };
       return next;
     });
     setSlashMenuBlockId(null);
+    if (nextParagraph) setFocusBlockId(nextParagraph.id);
     if (command === "h1" || command === "h2" || command === "h3" || command === "paragraph") setFocusBlockId(id);
   };
 
   const uploadImage = async (id: string, file?: File) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setMessage("Choose an image file.");
+    if (!supportedArticleImageTypes.has(file.type.toLowerCase())) {
+      setMessage("Choose a JPEG, PNG, WebP, or GIF image.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage("Choose an image smaller than 10 MB.");
       return;
     }
     setUploadingBlockId(id);
@@ -193,6 +212,15 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
   };
 
   const saveArticle = async () => {
+    const hasContent = blocks.some((block) => {
+      if (block.type === "image") return Boolean(block.url);
+      if (block.type === "link") return Boolean(block.label.trim() || block.url.trim());
+      return Boolean(block.text.trim());
+    });
+    if (!hasContent) {
+      setMessage("Add some text, an uploaded image, or a link before publishing.");
+      return;
+    }
     setSaving(true);
     setMessage("");
     try {
@@ -230,7 +258,9 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
   };
 
   const deleteArticle = async (article: ProfileArticle) => {
+    if (deletingSlug) return;
     if (!window.confirm(`Delete “${article.title}”? Its shared link will stop working.`)) return;
+    setDeletingSlug(article.slug);
     try {
       const res = await fetch(`/api/articles/${encodeURIComponent(article.slug)}`, { method: "DELETE" });
       if (!res.ok) throw new Error("The article could not be deleted.");
@@ -238,10 +268,12 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
       setMessage("Article deleted.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The article could not be deleted.");
+    } finally {
+      setDeletingSlug(null);
     }
   };
 
-  if (loading && !editing) return <div className="profile-articles-loading">Loading articles…</div>;
+  if (loading && !editing) return <div className="profile-articles-loading" role="status">Loading articles…</div>;
 
   return (
     <section className="profile-articles" aria-label="Profile articles">
@@ -255,9 +287,14 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
             {canManage && <button className="profile-article-primary" type="button" onClick={startNewArticle}>Write an article</button>}
           </header>
 
-          {message && <p className="profile-article-notice" role="status">{message}</p>}
+          {loadError ? (
+            <div className="profile-content-error" role="alert">
+              <p>{loadError}</p>
+              <button type="button" onClick={() => void loadArticles()}>Try again</button>
+            </div>
+          ) : message && <p className="profile-article-notice" role="status">{message}</p>}
 
-          {articles.length === 0 ? (
+          {loadError ? null : articles.length === 0 ? (
             <div className="profile-articles-empty">
               <span className="profile-articles-empty-mark" aria-hidden="true">A</span>
               <h3>{canManage ? "Your stories belong here" : "No articles published yet"}</h3>
@@ -275,7 +312,7 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
                   <div className="profile-article-row-actions">
                     <button type="button" onClick={() => void copyArticleLink(article.slug)}>Copy link</button>
                     {canManage && <button type="button" onClick={() => startEditArticle(article)}>Edit</button>}
-                    {canManage && <button type="button" className="profile-article-delete" onClick={() => void deleteArticle(article)}>Delete</button>}
+                    {canManage && <button type="button" className="profile-article-delete" disabled={deletingSlug !== null} onClick={() => void deleteArticle(article)}>{deletingSlug === article.slug ? "Deleting…" : "Delete"}</button>}
                   </div>
                 </article>
               ))}
@@ -285,7 +322,7 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
       ) : (
         <div className="profile-article-editor">
           <div className="profile-article-editor-topline">
-            <button className="profile-article-back" type="button" onClick={closeEditor}>← Articles</button>
+            <button className="profile-article-back" type="button" disabled={saving || uploadingBlockId !== null} onClick={closeEditor}>← Articles</button>
             <span>Type / in a blank line for blocks</span>
           </div>
 
@@ -299,13 +336,28 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
                       className={`profile-article-editor-text ${block.type === "text" ? "paragraph" : block.type}`}
                       aria-label={block.type === "text" || block.type === "paragraph" ? "Paragraph block" : `Heading ${block.type.slice(1)} block`}
                       rows={1}
+                      ref={(node) => {
+                        if (node) {
+                          node.style.height = "auto";
+                          node.style.height = `${node.scrollHeight}px`;
+                        }
+                      }}
                       placeholder={block.type === "h1" ? "Heading 1" : block.type === "h2" ? "Heading 2" : block.type === "h3" ? "Heading 3" : "Type '/' for commands"}
                       value={block.text}
-                      onChange={(event) => updateBlock(block.id, { text: event.target.value })}
+                      onChange={(event) => {
+                        event.currentTarget.style.height = "auto";
+                        event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+                        updateBlock(block.id, { text: event.target.value });
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "/" && !block.text.trim()) {
                           event.preventDefault();
                           setSlashMenuBlockId(block.id);
+                        } else if (event.key === "ArrowDown" && slashMenuBlockId === block.id) {
+                          event.preventDefault();
+                          document.querySelector<HTMLButtonElement>(".profile-article-slash-menu button")?.focus();
+                        } else if (event.key === "Escape" && slashMenuBlockId === block.id) {
+                          setSlashMenuBlockId(null);
                         } else if (event.key === "Enter" && !event.shiftKey) {
                           event.preventDefault();
                           insertParagraphAfter(block.id);
@@ -319,14 +371,23 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
 
                   {block.type === "image" && (
                     <div className="profile-article-image-fields">
-                      <button className="profile-article-remove-block" type="button" aria-label="Remove image block" onClick={() => setBlocks((current) => current.filter((item) => item.id !== block.id))}>×</button>
+                      <button className="profile-article-remove-block" type="button" disabled={uploadingBlockId === block.id} aria-label="Remove image block" onClick={() => setBlocks((current) => current.filter((item) => item.id !== block.id))}>×</button>
                       {block.url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={block.url} alt={block.alt || "Article image preview"} />
                       ) : (
                         <label className="profile-article-image-upload">
-                          <input type="file" accept="image/*" onChange={(event) => void uploadImage(block.id, event.target.files?.[0])} />
-                          <span>{uploadingBlockId === block.id ? "Uploading image…" : "Choose an image"}</span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            disabled={uploadingBlockId !== null}
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              event.currentTarget.value = "";
+                              void uploadImage(block.id, file);
+                            }}
+                          />
+                          <span role={uploadingBlockId === block.id ? "status" : undefined}>{uploadingBlockId === block.id ? "Uploading image…" : "Choose an image"}</span>
                         </label>
                       )}
                       <input aria-label="Image description" maxLength={240} placeholder="Add a caption (optional)" value={block.alt} onChange={(event) => updateBlock(block.id, { alt: event.target.value })} />
@@ -344,7 +405,25 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
                   {slashMenuBlockId === block.id && (
                     <div className="profile-article-slash-menu" role="menu" aria-label="Insert a block">
                       {commands.map((command) => (
-                        <button key={command.type} type="button" role="menuitem" onClick={() => applyCommand(block.id, command.type)}>
+                        <button
+                          key={command.type}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => applyCommand(block.id, command.type)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              setSlashMenuBlockId(null);
+                              document.getElementById(`article-block-${block.id}`)?.focus();
+                            } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                              event.preventDefault();
+                              const items = Array.from(document.querySelectorAll<HTMLButtonElement>(".profile-article-slash-menu button"));
+                              const currentIndex = items.indexOf(event.currentTarget);
+                              const offset = event.key === "ArrowDown" ? 1 : -1;
+                              items[(currentIndex + offset + items.length) % items.length]?.focus();
+                            }
+                          }}
+                        >
                           <b>{command.label}</b><span>{command.description}</span>
                         </button>
                       ))}
@@ -360,7 +439,7 @@ export function ProfileArticles({ profile, canManageArticles }: ProfileArticlesP
           <footer className="profile-article-editor-footer">
             <p>The article will be public and shareable by link.</p>
             <div>
-              <button className="profile-article-secondary" type="button" onClick={closeEditor}>Cancel</button>
+              <button className="profile-article-secondary" type="button" disabled={saving || uploadingBlockId !== null} onClick={closeEditor}>Cancel</button>
               <button className="profile-article-primary" type="button" disabled={saving || uploadingBlockId !== null} onClick={() => void saveArticle()}>
                 {saving ? "Publishing…" : editingSlug ? "Save changes" : "Publish article"}
               </button>

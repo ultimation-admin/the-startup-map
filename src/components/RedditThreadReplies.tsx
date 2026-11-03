@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
-import { CommunityPost, PostReply, Listing } from "@/lib/db";
-import { ShareSendIcon, RepostIcon } from "./Icons";
+import React, { useMemo, useState } from "react";
+import type { CommunityPost, PostReply, Listing } from "@/lib/db";
+import { ShareSendIcon } from "./Icons";
+
+const EMPTY_REPLIES: PostReply[] = [];
 
 function formatReplyTimeAgo(dateString?: string): string {
   if (!dateString) return "1h";
@@ -33,10 +35,14 @@ interface RedditThreadRepliesProps {
   userAvatar?: string;
   userProfileListing?: Listing | null;
   onRequireAuth: () => void;
-  onShowNoProfileModal: () => void;
   onSelectAuthorHandle?: (handle: string) => void;
   onAddReply: (postId: string, content: string, parentReplyId?: string, replyToUser?: string) => Promise<boolean>;
   onDeleteReply?: (postId: string, replyId: string) => Promise<boolean>;
+  isLoadingReplies?: boolean;
+  replyLoadError?: string;
+  onRetryLoadReplies?: () => void;
+  hasMoreReplies?: boolean;
+  onLoadMoreReplies?: () => void;
 }
 
 export function RedditThreadReplies({
@@ -47,10 +53,14 @@ export function RedditThreadReplies({
   userAvatar,
   userProfileListing,
   onRequireAuth,
-  onShowNoProfileModal,
   onSelectAuthorHandle,
   onAddReply,
   onDeleteReply,
+  isLoadingReplies = false,
+  replyLoadError,
+  onRetryLoadReplies,
+  hasMoreReplies = false,
+  onLoadMoreReplies,
 }: RedditThreadRepliesProps) {
   const [mainReplyText, setMainReplyText] = useState("");
   const [isSubmittingMain, setIsSubmittingMain] = useState(false);
@@ -62,6 +72,8 @@ export function RedditThreadReplies({
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
   // Local upvotes tracking
   const [replyUpvotes, setReplyUpvotes] = useState<Record<string, { count: number; upvoted: boolean }>>({});
+  const [pendingReplyLikes, setPendingReplyLikes] = useState<Set<string>>(() => new Set());
+  const [replyActionError, setReplyActionError] = useState<string | null>(null);
 
   const toggleCollapse = (id: string) => {
     setCollapsedIds((prev) =>
@@ -69,32 +81,96 @@ export function RedditThreadReplies({
     );
   };
 
-  const handleToggleUpvote = (replyId: string, initialCount = 0) => {
+  const handleToggleUpvote = async (reply: PostReply) => {
     if (!isSignedIn) {
       onRequireAuth();
       return;
     }
-    setReplyUpvotes((prev) => {
-      const current = prev[replyId] || { count: initialCount, upvoted: false };
-      const nextUpvoted = !current.upvoted;
-      return {
-        ...prev,
-        [replyId]: {
-          count: Math.max(0, current.count + (nextUpvoted ? 1 : -1)),
-          upvoted: nextUpvoted,
-        },
-      };
-    });
-  };
-
-  const handleShareReply = (text: string) => {
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      alert("Comment copied to clipboard!");
+    if (pendingReplyLikes.has(reply.id)) return;
+    const previous = replyUpvotes[reply.id] || {
+      count: reply.upvotes_count ?? 0,
+      upvoted: Boolean(reply.viewer_liked),
+    };
+    const optimistic = { count: Math.max(0, previous.count + (previous.upvoted ? -1 : 1)), upvoted: !previous.upvoted };
+    setReplyUpvotes((current) => ({ ...current, [reply.id]: optimistic }));
+    setPendingReplyLikes((current) => new Set(current).add(reply.id));
+    setReplyActionError(null);
+    try {
+      const response = await fetch(`/api/posts/${encodeURIComponent(post.id)}/replies/${encodeURIComponent(reply.id)}/like`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Reply like could not be updated.");
+      setReplyUpvotes((current) => ({
+        ...current,
+        [reply.id]: { count: data.result.likes_count, upvoted: data.result.liked },
+      }));
+    } catch (error) {
+      setReplyUpvotes((current) => ({ ...current, [reply.id]: previous }));
+      setReplyActionError(error instanceof Error ? error.message : "Reply like could not be updated.");
+    } finally {
+      setPendingReplyLikes((current) => {
+        const next = new Set(current);
+        next.delete(reply.id);
+        return next;
+      });
     }
   };
 
-  const effectiveReplies = post.replies ?? [];
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
+
+  const handleShareReply = async (text: string) => {
+    const permalink = new URL(window.location.href);
+    permalink.hash = `post-${post.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: post.user_name, text, url: permalink.toString() });
+      } else {
+        await navigator.clipboard.writeText(permalink.toString());
+        setShareMessage("Post link copied.");
+        window.setTimeout(() => setShareMessage(null), 2500);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setReplyActionError("Could not share this reply.");
+    }
+  };
+
+  const { effectiveReplies, primaryReplies, childrenByParent } = useMemo(() => {
+    const uniqueReplies = Array.from(new Map((post.replies ?? EMPTY_REPLIES).map((reply) => [reply.id, reply])).values());
+    const replyIds = new Set(uniqueReplies.map((reply) => reply.id));
+    const childrenByParent = new Map<string, PostReply[]>();
+    const primaryReplies: PostReply[] = [];
+
+    for (const reply of uniqueReplies) {
+      const parentId = String(reply.parent_reply_id || "").trim();
+      if (!parentId || parentId === "null" || parentId === "undefined" || !replyIds.has(parentId) || parentId === reply.id) {
+        primaryReplies.push(reply);
+        continue;
+      }
+      const children = childrenByParent.get(parentId) || [];
+      children.push(reply);
+      childrenByParent.set(parentId, children);
+    }
+
+    // Break corrupt cycles into visible roots so no reply disappears or recurses forever.
+    const visited = new Set<string>();
+    const visitFrom = (start: PostReply) => {
+      const stack = [start.id];
+      while (stack.length) {
+        const currentId = stack.pop()!;
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+        for (const child of childrenByParent.get(currentId) || []) stack.push(child.id);
+      }
+    };
+    primaryReplies.forEach(visitFrom);
+    for (const reply of uniqueReplies) {
+      if (!visited.has(reply.id)) {
+        primaryReplies.push(reply);
+        visitFrom(reply);
+      }
+    }
+    return { effectiveReplies: uniqueReplies, primaryReplies, childrenByParent };
+  }, [post.replies]);
 
   // Compute active user display handle
   const activeUserHandle = userProfileListing
@@ -107,23 +183,7 @@ export function RedditThreadReplies({
         ? userName
         : `p/${userName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "founder"}`);
 
-  // Robust check for primary replies (top-level direct replies to the post)
-  // If parent comment was deleted or not found, treat as primary to prevent orphan disappearance
-  const isPrimaryReply = (r: PostReply) => {
-    if (!r.parent_reply_id) return true;
-    const pId = String(r.parent_reply_id).trim();
-    if (pId === "" || pId === "null" || pId === "undefined") return true;
-    return !effectiveReplies.some((other) => String(other.id).trim() === pId);
-  };
-
-  // Helper to find child replies of a specific parent comment
-  const getDirectChildren = (all: PostReply[], parentId: string) => {
-    return all.filter(
-      (r) => r.parent_reply_id && String(r.parent_reply_id).trim() === String(parentId).trim()
-    );
-  };
-
-  const primaryReplies = effectiveReplies.filter(isPrimaryReply);
+  const getDirectChildren = (parentId: string) => childrenByParent.get(parentId) || [];
 
   const handleCreateTopLevelReply = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -168,17 +228,18 @@ export function RedditThreadReplies({
   };
 
   // Render Secondary Reply Node (Nested under a Primary Reply or another Secondary Reply)
-  const renderSecondaryReply = (reply: PostReply, depth = 1) => {
+  const renderSecondaryReply = (reply: PostReply, depth = 1, ancestors = new Set<string>()) => {
     const isOP =
       reply.user_name.toLowerCase() === post.user_name.toLowerCase() ||
       reply.user_id === post.user_id;
 
     const isCollapsed = collapsedIds.includes(reply.id);
-    const childReplies = getDirectChildren(effectiveReplies, reply.id);
+    const nextAncestors = new Set(ancestors).add(reply.id);
+    const childReplies = getDirectChildren(reply.id).filter((child) => !nextAncestors.has(child.id));
 
     const upvoteInfo = replyUpvotes[reply.id] || {
       count: reply.upvotes_count ?? 0,
-      upvoted: false,
+      upvoted: Boolean(reply.viewer_liked),
     };
 
     const isStartup = reply.user_name.startsWith("s/");
@@ -192,7 +253,7 @@ export function RedditThreadReplies({
           <div
             className="secondary-reply-avatar"
             style={{
-              background: isOP ? "#f85900" : isStartup ? "#2563eb" : "#8b5cf6",
+              background: isOP ? "#000000" : isStartup ? "#757575" : "#757575",
             }}
           >
             {reply.user_avatar ? (
@@ -245,11 +306,13 @@ export function RedditThreadReplies({
                 <button
                   type="button"
                   className={`reddit-action-btn like-action ${upvoteInfo.upvoted ? "liked" : ""}`}
-                  onClick={() => handleToggleUpvote(reply.id, upvoteInfo.count)}
+                  disabled={pendingReplyLikes.has(reply.id)}
+                  aria-pressed={upvoteInfo.upvoted}
+                  onClick={() => void handleToggleUpvote(reply)}
                   title="Like"
                   aria-label="Like"
                 >
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill={upvoteInfo.upvoted ? "#ef4444" : "none"} stroke={upvoteInfo.upvoted ? "#ef4444" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill={upvoteInfo.upvoted ? "#F85900" : "none"} stroke={upvoteInfo.upvoted ? "#F85900" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                   </svg>
                   {upvoteInfo.count > 0 && <span className="action-count">{upvoteInfo.count}</span>}
@@ -276,16 +339,6 @@ export function RedditThreadReplies({
 
                 <button
                   type="button"
-                  className="reddit-action-btn repost-action"
-                  onClick={() => alert("Reposted reply!")}
-                  title="Repost"
-                  aria-label="Repost"
-                >
-                  <RepostIcon size={16} />
-                </button>
-
-                <button
-                  type="button"
                   className="reddit-action-btn share-action"
                   onClick={() => handleShareReply(reply.content)}
                   title="Share"
@@ -302,7 +355,7 @@ export function RedditThreadReplies({
                     title="Delete reply"
                     aria-label="Delete reply"
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="3 6 5 6 21 6" />
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                     </svg>
@@ -314,7 +367,7 @@ export function RedditThreadReplies({
               {activeSubReplyId === reply.id && (
                 <div className="reddit-inline-reply-box">
                   <div className="reply-as-badge">
-                    Replying to <b>{reply.user_name}</b> as <span style={{ color: "#f85900", fontWeight: 700 }}>{activeUserHandle}</span>
+                    Replying to <b>{reply.user_name}</b> as <span style={{ color: "#000000", fontWeight: 700 }}>{activeUserHandle}</span>
                   </div>
                   <textarea
                     autoFocus
@@ -349,7 +402,7 @@ export function RedditThreadReplies({
               {/* NESTED SUB-SECONDARY REPLIES */}
               {childReplies.length > 0 && (
                 <div className={`secondary-replies-list depth-${Math.min(depth, 3)}`}>
-                  {childReplies.map((child) => renderSecondaryReply(child, depth + 1))}
+                  {childReplies.map((child) => renderSecondaryReply(child, depth + 1, nextAncestors))}
                 </div>
               )}
             </>
@@ -366,7 +419,10 @@ export function RedditThreadReplies({
           <span>↓↑ Top</span>
         </div>
         <div className="reddit-activity-link">
-          <span>{effectiveReplies.length} {effectiveReplies.length === 1 ? "reply" : "replies"}</span>
+          {(() => {
+            const replyCount = Math.max(post.replies_count || 0, effectiveReplies.length);
+            return <span>{replyCount} {replyCount === 1 ? "reply" : "replies"}</span>;
+          })()}
         </div>
       </div>
 
@@ -375,7 +431,7 @@ export function RedditThreadReplies({
         <div className="primary-avatar-col">
           <div
             className="primary-reply-avatar composer-avatar"
-            style={{ background: userProfileListing?.color || "#f85900" }}
+            style={{ background: userProfileListing?.color || "#000000" }}
           >
             {userProfileListing?.logo_url ? (
               <img src={userProfileListing.logo_url} alt={userProfileListing.name} />
@@ -414,7 +470,17 @@ export function RedditThreadReplies({
 
       {/* PRIMARY REPLIES LIST */}
       <div className="primary-replies-list">
-        {primaryReplies.length === 0 ? (
+        {shareMessage && <p className="reply-action-feedback" role="status">{shareMessage}</p>}
+        {replyActionError && <p className="reply-action-feedback is-error" role="alert">{replyActionError}</p>}
+        {replyLoadError && (
+          <div className="reply-load-error" role="alert">
+            <span>{replyLoadError}</span>
+            <button type="button" disabled={isLoadingReplies} onClick={onRetryLoadReplies}>{isLoadingReplies ? "Loading…" : "Retry"}</button>
+          </div>
+        )}
+        {isLoadingReplies && effectiveReplies.length === 0 ? (
+          <p className="reddit-replies-empty">Loading replies…</p>
+        ) : primaryReplies.length === 0 ? (
           <p className="reddit-replies-empty">No replies yet. Be the first to reply.</p>
         ) : primaryReplies.map((priReply, index) => {
           const isOP =
@@ -422,11 +488,11 @@ export function RedditThreadReplies({
             priReply.user_id === post.user_id;
 
           const isCollapsed = collapsedIds.includes(priReply.id);
-          const secondaryReplies = getDirectChildren(effectiveReplies, priReply.id);
+          const secondaryReplies = getDirectChildren(priReply.id).filter((child) => child.id !== priReply.id);
 
           const upvoteInfo = replyUpvotes[priReply.id] || {
             count: priReply.upvotes_count ?? 0,
-            upvoted: false,
+            upvoted: Boolean(priReply.viewer_liked),
           };
 
           const isStartup = priReply.user_name.startsWith("s/");
@@ -442,7 +508,7 @@ export function RedditThreadReplies({
                   <div
                     className="primary-reply-avatar"
                     style={{
-                      background: isOP ? "#f85900" : isStartup ? "#2563eb" : "#8b5cf6",
+                      background: isOP ? "#000000" : isStartup ? "#757575" : "#757575",
                     }}
                   >
                     {priReply.user_avatar ? (
@@ -489,11 +555,13 @@ export function RedditThreadReplies({
                         <button
                           type="button"
                           className={`reddit-action-btn like-action ${upvoteInfo.upvoted ? "liked" : ""}`}
-                          onClick={() => handleToggleUpvote(priReply.id, upvoteInfo.count)}
+                          disabled={pendingReplyLikes.has(priReply.id)}
+                          aria-pressed={upvoteInfo.upvoted}
+                          onClick={() => void handleToggleUpvote(priReply)}
                           title="Like"
                           aria-label="Like"
                         >
-                          <svg width="17" height="17" viewBox="0 0 24 24" fill={upvoteInfo.upvoted ? "#ef4444" : "none"} stroke={upvoteInfo.upvoted ? "#ef4444" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill={upvoteInfo.upvoted ? "#F85900" : "none"} stroke={upvoteInfo.upvoted ? "#F85900" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                           </svg>
                           {upvoteInfo.count > 0 && <span className="action-count">{upvoteInfo.count}</span>}
@@ -520,16 +588,6 @@ export function RedditThreadReplies({
 
                         <button
                           type="button"
-                          className="reddit-action-btn repost-action"
-                          onClick={() => alert("Reposted reply!")}
-                          title="Repost"
-                          aria-label="Repost"
-                        >
-                          <RepostIcon size={16} />
-                        </button>
-
-                        <button
-                          type="button"
                           className="reddit-action-btn share-action"
                           onClick={() => handleShareReply(priReply.content)}
                           title="Share"
@@ -546,7 +604,7 @@ export function RedditThreadReplies({
                             title="Delete reply"
                             aria-label="Delete reply"
                           >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="3 6 5 6 21 6" />
                               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                             </svg>
@@ -558,7 +616,7 @@ export function RedditThreadReplies({
                       {activeSubReplyId === priReply.id && (
                         <div className="reddit-inline-reply-box">
                           <div className="reply-as-badge">
-                            Replying to <b>{priReply.user_name}</b> as <span style={{ color: "#f85900", fontWeight: 700 }}>{activeUserHandle}</span>
+                            Replying to <b>{priReply.user_name}</b> as <span style={{ color: "#000000", fontWeight: 700 }}>{activeUserHandle}</span>
                           </div>
                           <textarea
                             autoFocus
@@ -597,12 +655,17 @@ export function RedditThreadReplies({
               {/* SECONDARY REPLIES THREAD (INDENTED INLINE THREAD WITH REDDIT VERTICAL CONNECTOR) */}
               {!isCollapsed && secondaryReplies.length > 0 && (
                 <div className="secondary-replies-thread">
-                  {secondaryReplies.map((secReply) => renderSecondaryReply(secReply, 1))}
+                  {secondaryReplies.map((secReply) => renderSecondaryReply(secReply, 1, new Set([priReply.id])))}
                 </div>
               )}
             </div>
           );
         })}
+        {hasMoreReplies && (
+          <button type="button" className="btn-outline-pill" disabled={isLoadingReplies} onClick={onLoadMoreReplies} style={{ display: "block", margin: "12px auto" }}>
+            {isLoadingReplies ? "Loading…" : "Load more replies"}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Listing, ReviewState, UserProfile, CommunityPost, Community } from "@/lib/db";
 import {
   CheckIcon,
@@ -33,6 +33,7 @@ export function AdminPanel({
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
+  const [listingCounts, setListingCounts] = useState({ total: 0, pending: 0, verified: 0, rejected: 0 });
 
   // Form for creating new community
   const [newCommName, setNewCommName] = useState("");
@@ -43,12 +44,23 @@ export function AdminPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [pageState, setPageState] = useState({
+    listingCursor: null as string | null,
+    userCursor: null as string | null,
+    postCursor: null as string | null,
+    hasMoreListings: false,
+    hasMoreUsers: false,
+    hasMorePosts: false,
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const loadData = async (isInitial = false) => {
     if (isInitial) setLoading(true);
     try {
+      const listingParams = new URLSearchParams({ status: filterState });
+      if (searchQuery.trim()) listingParams.set("q", searchQuery.trim());
       const [listingsRes, usersRes, postsRes, commsRes] = await Promise.all([
-        fetch("/api/admin/listings").catch(() => null),
+        fetch(`/api/admin/listings?${listingParams.toString()}`).catch(() => null),
         fetch("/api/admin/users").catch(() => null),
         fetch("/api/admin/posts").catch(() => null),
         fetch("/api/communities").catch(() => null),
@@ -57,21 +69,19 @@ export function AdminPanel({
       if (listingsRes && listingsRes.ok) {
         const data = await listingsRes.json();
         setListings(Array.isArray(data) ? data : (data.listings || []));
+        if (data.counts) setListingCounts(data.counts);
+        setPageState((current) => ({ ...current, listingCursor: data.next_cursor || null, hasMoreListings: Boolean(data.has_more) }));
       }
       if (usersRes && usersRes.ok) {
         const data = await usersRes.json();
         setUsers(Array.isArray(data) ? data : (data.users || []));
+        setPageState((current) => ({ ...current, userCursor: data.next_cursor || null, hasMoreUsers: Boolean(data.has_more) }));
       }
       if (postsRes && postsRes.ok) {
         const data = await postsRes.json();
         const rawPosts = Array.isArray(data) ? data : (data.posts || []);
-        setPosts(
-          rawPosts.map((p: any) => ({
-            ...p,
-            liked_by: typeof p.liked_by === "string" ? JSON.parse(p.liked_by || "[]") : (p.liked_by || []),
-            replies: typeof p.replies === "string" ? JSON.parse(p.replies || "[]") : (p.replies || []),
-          }))
-        );
+        setPageState((current) => ({ ...current, postCursor: data.next_cursor || null, hasMorePosts: Boolean(data.has_more) }));
+        setPosts(rawPosts);
       }
       if (commsRes && commsRes.ok) {
         const data = await commsRes.json();
@@ -86,12 +96,63 @@ export function AdminPanel({
 
   useEffect(() => {
     loadData(true);
-    const interval = setInterval(() => {
-      loadData(false);
-      if (onListingsUpdated) onListingsUpdated();
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [onListingsUpdated]);
+  }, []);
+
+  const listingsFilterInitialized = useRef(false);
+  useEffect(() => {
+    if (!listingsFilterInitialized.current) {
+      listingsFilterInitialized.current = true;
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      const params = new URLSearchParams({ status: filterState });
+      if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      try {
+        const response = await fetch(`/api/admin/listings?${params.toString()}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setListings(data.listings || []);
+        if (data.counts) setListingCounts(data.counts);
+        setPageState((current) => ({ ...current, listingCursor: data.next_cursor || null, hasMoreListings: Boolean(data.has_more) }));
+      } catch (error) {
+        console.error("Failed to load filtered admin listings:", error);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [filterState, searchQuery]);
+
+  const loadMore = async (kind: "listings" | "users" | "posts") => {
+    const cursor = kind === "listings" ? pageState.listingCursor : kind === "users" ? pageState.userCursor : pageState.postCursor;
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams({ cursor });
+      if (kind === "listings") {
+        params.set("status", filterState);
+        if (searchQuery.trim()) params.set("q", searchQuery.trim());
+      }
+      const response = await fetch(`/api/admin/${kind}?${params.toString()}`);
+      if (!response.ok) throw new Error("More records could not be loaded.");
+      const data = await response.json();
+      const key = kind === "listings" ? "listings" : kind;
+      if (kind === "listings") setListings((current) => [...current, ...(data[key] || [])]);
+      if (kind === "users") setUsers((current) => [...current, ...(data[key] || [])]);
+      if (kind === "posts") setPosts((current) => [...current, ...(data[key] || [])]);
+      setPageState((current) => ({
+        ...current,
+        listingCursor: kind === "listings" ? data.next_cursor || null : current.listingCursor,
+        userCursor: kind === "users" ? data.next_cursor || null : current.userCursor,
+        postCursor: kind === "posts" ? data.next_cursor || null : current.postCursor,
+        hasMoreListings: kind === "listings" ? Boolean(data.has_more) : current.hasMoreListings,
+        hasMoreUsers: kind === "users" ? Boolean(data.has_more) : current.hasMoreUsers,
+        hasMorePosts: kind === "posts" ? Boolean(data.has_more) : current.hasMorePosts,
+      }));
+    } catch (error) {
+      console.error(`Failed to load more admin ${kind}:`, error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleApprove = async (id: string) => {
     setActionLoadingId(id);
@@ -203,24 +264,17 @@ export function AdminPanel({
     }
   };
 
-  const filteredListings = listings.filter((l) => {
-    const matchesTab = filterState === "all" ? true : (l.review_state || "pending") === filterState;
-    const matchesSearch =
-      l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      l.sector.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesTab && matchesSearch;
-  });
+  const filteredListings = listings;
 
-  const pendingCount = listings.filter((l) => (l.review_state || "pending") === "pending").length;
-  const verifiedCount = listings.filter((l) => l.review_state === "verified").length;
-  const rejectedCount = listings.filter((l) => l.review_state === "rejected").length;
+  const pendingCount = listingCounts.pending;
+  const verifiedCount = listingCounts.verified;
+  const rejectedCount = listingCounts.rejected;
 
   return (
-    <div className="admin-panel-slide" style={{ background: "#ffffff", color: "#111827" }}>
+    <div className="admin-panel-slide" style={{ background: "#ffffff", color: "#000000" }}>
       <div className="admin-panel-header" style={{ background: "#ffffff", borderBottom: "1px solid #e5e7eb" }}>
         <div>
-          <h3 style={{ margin: 0, color: "#111827", fontWeight: 800 }}>Platform Admin Panel</h3>
+          <h3 style={{ margin: 0, color: "#000000", fontWeight: 800 }}>Platform Admin Panel</h3>
           <p style={{ margin: 0, color: "#6b7280", fontSize: "13px" }}>Realtime approvals, user management & feed moderations</p>
         </div>
         <button type="button" className="close-btn" onClick={onClose}>
@@ -233,35 +287,35 @@ export function AdminPanel({
         <button
           type="button"
           onClick={() => setActiveTab("dashboard")}
-          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "dashboard" ? "#111827" : "#eeeef2", color: activeTab === "dashboard" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "dashboard" ? "#000000" : "#eeeef2", color: activeTab === "dashboard" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
         >
           <BarChartIcon size={13} /> Dashboard
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("profiles")}
-          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "profiles" ? "#111827" : "#eeeef2", color: activeTab === "profiles" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "profiles" ? "#000000" : "#eeeef2", color: activeTab === "profiles" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
         >
-          <MapPinIcon size={13} /> Profiles ({pendingCount})
+          <MapPinIcon size={13} /> Profiles ({listingCounts.total})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("users")}
-          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "users" ? "#111827" : "#eeeef2", color: activeTab === "users" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "users" ? "#000000" : "#eeeef2", color: activeTab === "users" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
         >
           <UsersIcon size={13} /> Users ({users.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("communities")}
-          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "communities" ? "#111827" : "#eeeef2", color: activeTab === "communities" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "communities" ? "#000000" : "#eeeef2", color: activeTab === "communities" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
         >
           <SparklesIcon size={13} /> Communities ({communities.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("posts")}
-          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "posts" ? "#111827" : "#eeeef2", color: activeTab === "posts" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
+          style={{ flex: 1, padding: "8px", borderRadius: "8px", border: "none", background: activeTab === "posts" ? "#000000" : "#eeeef2", color: activeTab === "posts" ? "#ffffff" : "#374151", fontWeight: 600, fontSize: "12px", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "4px" }}
         >
           <MessageSquareIcon size={13} /> Posts ({posts.length})
         </button>
@@ -297,16 +351,16 @@ export function AdminPanel({
           <>
             <div className="admin-filter-tabs">
               <button type="button" className={`admin-tab ${filterState === "pending" ? "active" : ""}`} onClick={() => setFilterState("pending")}>
-                Pending ({pendingCount})
+                Pending
               </button>
               <button type="button" className={`admin-tab ${filterState === "verified" ? "active" : ""}`} onClick={() => setFilterState("verified")}>
-                Approved ({verifiedCount})
+                Approved
               </button>
               <button type="button" className={`admin-tab ${filterState === "rejected" ? "active" : ""}`} onClick={() => setFilterState("rejected")}>
-                Rejected ({rejectedCount})
+                Rejected
               </button>
               <button type="button" className={`admin-tab ${filterState === "all" ? "active" : ""}`} onClick={() => setFilterState("all")}>
-                All ({listings.length})
+                All
               </button>
             </div>
 
@@ -331,7 +385,7 @@ export function AdminPanel({
                     return (
                       <tr key={item.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "10px" }}>
-                          <span style={{ fontSize: "10px", fontWeight: 700, color: "#16a34a", background: "#e6f8ed", padding: "1px 5px", borderRadius: "4px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: 700, color: "#757575", background: "#e6f8ed", padding: "1px 5px", borderRadius: "4px" }}>
                             {handle}
                           </span>
                           <div style={{ fontWeight: 800 }}>{item.name}</div>
@@ -341,13 +395,13 @@ export function AdminPanel({
                           <small style={{ color: "#6b7280" }}>{item.sector}</small>
                         </td>
                         <td style={{ padding: "10px" }}>
-                          <span style={{ padding: "2px 6px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", background: item.review_state === "verified" ? "#dcfce7" : "#fef3c7", color: item.review_state === "verified" ? "#16a34a" : "#d97706" }}>
+                          <span style={{ padding: "2px 6px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", background: item.review_state === "verified" ? "#dcfce7" : "#fef3c7", color: item.review_state === "verified" ? "#757575" : "#d97706" }}>
                             {item.review_state}
                           </span>
                         </td>
                         <td style={{ padding: "10px", textAlign: "right" }}>
                           {item.review_state !== "verified" && (
-                            <button type="button" onClick={() => handleApprove(item.id)} style={{ padding: "4px 8px", borderRadius: "4px", border: "none", background: "#10b981", color: "#ffffff", fontWeight: 700, fontSize: "11px", cursor: "pointer", marginRight: "4px" }}>
+                            <button type="button" onClick={() => handleApprove(item.id)} style={{ padding: "4px 8px", borderRadius: "4px", border: "none", background: "#757575", color: "#ffffff", fontWeight: 700, fontSize: "11px", cursor: "pointer", marginRight: "4px" }}>
                               Approve
                             </button>
                           )}
@@ -360,6 +414,11 @@ export function AdminPanel({
                   })}
                 </tbody>
               </table>
+              {pageState.hasMoreListings && (
+                <button type="button" className="btn-outline-pill" disabled={loadingMore} onClick={() => void loadMore("listings")} style={{ display: "block", margin: "16px auto 0" }}>
+                  {loadingMore ? "Loading…" : "Load more profiles"}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -390,6 +449,11 @@ export function AdminPanel({
                 ))}
               </tbody>
             </table>
+            {pageState.hasMoreUsers && (
+              <button type="button" className="btn-outline-pill" disabled={loadingMore} onClick={() => void loadMore("users")} style={{ display: "block", margin: "16px auto 0" }}>
+                {loadingMore ? "Loading…" : "Load more users"}
+              </button>
+            )}
           </div>
         )}
 
@@ -398,7 +462,7 @@ export function AdminPanel({
           <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* CREATE COMMUNITY FORM */}
             <form onSubmit={handleCreateCommunity} style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div style={{ fontWeight: 800, fontSize: "14px", color: "#0f172a" }}>+ Create New Community</div>
+              <div style={{ fontWeight: 800, fontSize: "14px", color: "#000000" }}>+ Create New Community</div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <input
                   type="text"
@@ -418,7 +482,7 @@ export function AdminPanel({
                 <button
                   type="submit"
                   disabled={isCreatingComm || !newCommName.trim()}
-                  style={{ padding: "8px 18px", borderRadius: "8px", border: "none", background: "#10b981", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                  style={{ padding: "8px 18px", borderRadius: "8px", border: "none", background: "#757575", color: "#ffffff", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
                 >
                   {isCreatingComm ? "Creating..." : "+ Add"}
                 </button>
@@ -427,7 +491,7 @@ export function AdminPanel({
 
             {/* COMMUNITIES LIST TABLE */}
             <div>
-              <div style={{ fontWeight: 800, fontSize: "13px", color: "#64748b", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              <div style={{ fontWeight: 800, fontSize: "13px", color: "#757575", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 EXISTING COMMUNITIES ({communities.length})
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
@@ -441,7 +505,7 @@ export function AdminPanel({
                 <tbody>
                   {communities.map((c) => (
                     <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "8px", fontWeight: 800, color: "#10b981" }}>
+                      <td style={{ padding: "8px", fontWeight: 800, color: "#757575" }}>
                         /{c.name.replace(/^\//, "")}
                       </td>
                       <td style={{ padding: "8px", color: "#475569" }}>{c.description || "—"}</td>
@@ -449,7 +513,7 @@ export function AdminPanel({
                         <button
                           type="button"
                           onClick={() => handleDeleteCommunity(c.id)}
-                          style={{ padding: "4px 10px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#dc2626", fontWeight: 700, fontSize: "11px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          style={{ padding: "4px 10px", borderRadius: "6px", border: "none", background: "#fee2e2", color: "#000000", fontWeight: 700, fontSize: "11px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}
                         >
                           <TrashIcon size={11} /> Delete
                         </button>
@@ -483,10 +547,10 @@ export function AdminPanel({
               <tbody>
                 {posts.map((p) => (
                   <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "8px", fontWeight: 700, color: "#16a34a" }}>{p.user_name}</td>
+                    <td style={{ padding: "8px", fontWeight: 700, color: "#757575" }}>{p.user_name}</td>
                     <td style={{ padding: "8px", color: "#374151" }}>{p.content}</td>
                     <td style={{ padding: "8px", textAlign: "right" }}>
-                      <button type="button" onClick={() => handleDeletePost(p.id)} style={{ padding: "4px 8px", borderRadius: "4px", border: "none", background: "#fee2e2", color: "#dc2626", fontWeight: 700, fontSize: "11px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <button type="button" onClick={() => handleDeletePost(p.id)} style={{ padding: "4px 8px", borderRadius: "4px", border: "none", background: "#fee2e2", color: "#000000", fontWeight: 700, fontSize: "11px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                         <TrashIcon size={11} /> Delete
                       </button>
                     </td>
@@ -494,6 +558,11 @@ export function AdminPanel({
                 ))}
               </tbody>
             </table>
+            {pageState.hasMorePosts && (
+              <button type="button" className="btn-outline-pill" disabled={loadingMore} onClick={() => void loadMore("posts")} style={{ display: "block", margin: "16px auto 0" }}>
+                {loadingMore ? "Loading…" : "Load more posts"}
+              </button>
+            )}
           </div>
         )}
       </div>

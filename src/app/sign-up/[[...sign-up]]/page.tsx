@@ -14,33 +14,29 @@ export default function SignUpPage() {
 
   if (!isMounted) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-[#090D14] p-4">
+      <div className="flex justify-center items-center min-h-screen bg-[#FFFFFF] p-4">
         <div className="w-[360px] h-[400px] bg-white rounded-[24px] animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#090D14] text-white flex flex-col justify-between relative overflow-hidden">
-      {/* Subtle ambient background glow */}
-      <div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-[#f85900]/10 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-[400px] h-[400px] bg-[#10b981]/5 rounded-full blur-[120px] pointer-events-none" />
-
+    <div className="min-h-screen bg-[#FFFFFF] text-black flex flex-col justify-between relative overflow-hidden">
       {/* Top Bar with Brand & Back Link */}
       <header className="relative z-20 flex items-center justify-between px-6 py-5 max-w-7xl mx-auto w-full">
         <Link href="/" className="inline-flex items-center gap-2.5 group">
-          <span className="w-8 h-8 rounded-xl bg-[#f85900] text-white flex items-center justify-center font-bold text-sm shadow-md shadow-[#f85900]/30 transition-transform group-hover:scale-105">
+          <span className="w-8 h-8 rounded-xl bg-[#f85900] text-black flex items-center justify-center font-semibold text-sm shadow-none transition-colors group-hover:brightness-95">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M4 6.5 12 3l8 3.5v11L12 21l-8-3.5v-11Z" />
               <path d="m4 6.5 8 3.5 8-3.5M12 10v11" />
             </svg>
           </span>
-          <span className="font-bold text-base tracking-tight text-white/95">The Startup Map</span>
+          <span className="font-bold text-base tracking-tight text-black">The Startup Map</span>
         </Link>
 
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white/90 bg-white/10 hover:bg-white/15 border border-white/15 rounded-full shadow-sm backdrop-blur-md transition-all active:scale-95"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-black bg-white hover:bg-[#E3E3E3] border border-[#E3E3E3] rounded-full shadow-sm backdrop-blur-md transition-all active:scale-95"
         >
           ← Back to Map
         </Link>
@@ -52,17 +48,17 @@ export default function SignUpPage() {
           
           {/* Left Column (Desktop Illustration & Value Prop) */}
           <div className="hidden lg:flex lg:col-span-7 flex-col justify-center pr-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-semibold text-[#f85900] mb-4 w-fit">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#f85900] animate-pulse" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E3E3E3] border border-[#E3E3E3] text-xs font-semibold text-[#757575] mb-4 w-fit">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#000000] animate-pulse" />
               Claim Your Spot
             </div>
 
-            <h1 className="text-3xl xl:text-4xl font-extrabold tracking-tight text-white leading-tight mb-3">
+            <h1 className="text-3xl xl:text-4xl font-extrabold tracking-tight text-black leading-tight mb-3">
               Put your venture on <br />
               <span className="text-[#f85900]">The Startup Map.</span>
             </h1>
 
-            <p className="text-sm text-slate-400 max-w-md leading-relaxed mb-6">
+            <p className="text-sm text-[#757575] max-w-md leading-relaxed mb-6">
               Create your profile to showcase your startup, connect with co-founders, hire top talent, and get discovered by angels and VCs.
             </p>
 
@@ -73,17 +69,17 @@ export default function SignUpPage() {
 
             {/* Value Highlights */}
             <div className="grid grid-cols-3 gap-3 mt-4 max-w-lg">
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
-                <span className="block text-base font-bold text-white">100%</span>
-                <span className="text-[11px] text-slate-400">Free to Join</span>
+              <div className="bg-[#E3E3E3] border border-[#E3E3E3] rounded-2xl p-3 text-center">
+                <span className="block text-base font-bold text-black">100%</span>
+                <span className="text-[11px] text-[#757575]">Free to Join</span>
               </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
-                <span className="block text-base font-bold text-white">Direct</span>
-                <span className="text-[11px] text-slate-400">Investor Access</span>
+              <div className="bg-[#E3E3E3] border border-[#E3E3E3] rounded-2xl p-3 text-center">
+                <span className="block text-base font-bold text-black">Direct</span>
+                <span className="text-[11px] text-[#757575]">Investor Access</span>
               </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3 text-center">
-                <span className="block text-base font-bold text-white">Verified</span>
-                <span className="text-[11px] text-slate-400">Founder Badge</span>
+              <div className="bg-[#E3E3E3] border border-[#E3E3E3] rounded-2xl p-3 text-center">
+                <span className="block text-base font-bold text-black">Verified</span>
+                <span className="text-[11px] text-[#757575]">Founder Badge</span>
               </div>
             </div>
           </div>
@@ -93,10 +89,10 @@ export default function SignUpPage() {
             <div className="auth-modal-card w-full max-w-[380px] shadow-2xl">
               {/* Chrome Navigation: Segmented Switcher */}
               <div className="flex items-center justify-between mb-3">
-                <div className="inline-flex items-center p-1 bg-[#F0F2F5] rounded-full text-xs font-semibold">
+                <div className="inline-flex items-center p-1 bg-[#E3E3E3] rounded-full text-xs font-semibold">
                   <Link
                     href="/sign-in"
-                    className="py-1 px-3.5 rounded-full text-[#5B6368] hover:text-black font-medium transition-colors"
+                    className="py-1 px-3.5 rounded-full text-[#757575] hover:text-black font-medium transition-colors"
                   >
                     Sign In
                   </Link>
@@ -114,7 +110,7 @@ export default function SignUpPage() {
               {/* Editorial Greeting */}
               <div className="mb-3 text-center">
                 <h2 className="text-[18px] font-bold tracking-tight text-black">Join The Startup Map</h2>
-                <p className="text-xs text-[#5B6368] mt-0.5">Create your account in seconds</p>
+                <p className="text-xs text-[#757575] mt-0.5">Create your account in seconds</p>
               </div>
 
               <div className="auth-modal-content">
@@ -127,7 +123,7 @@ export default function SignUpPage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-4 text-center text-xs text-slate-500">
+      <footer className="relative z-10 py-4 text-center text-xs text-[#757575]">
         © {new Date().getFullYear()} The Startup Map. Made for people building what’s next.
       </footer>
     </div>

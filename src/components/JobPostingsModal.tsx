@@ -21,8 +21,8 @@ export function JobPostingsModal({ isOpen, onClose, listing, currentUser }: JobP
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Check if current user is owner (or in mock mode, if we are logged in, we let the user manage it if they created it or if they are in development)
-  const isOwner = currentUser && (listing.owner_id === currentUser.id || listing.owner_id === "system");
+  // Match the server-side ownership check; system-owned placeholder listings are not editable.
+  const isOwner = Boolean(currentUser && listing.owner_id === currentUser.id);
 
   useEffect(() => {
     if (!isOpen) return;

@@ -23,15 +23,15 @@ export function TermsAgreementCheckbox({
         id="terms-agreement-checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className={`mt-0.5 h-4 w-4 rounded border-slate-300 text-[#f85900] focus:ring-[#f85900] cursor-pointer transition-all ${
-          error ? "border-red-500 ring-2 ring-red-200" : ""
+        className={`mt-0.5 h-4 w-4 rounded border-[#E3E3E3] text-[#000000] focus:ring-[#000000] cursor-pointer transition-colors ${
+          error ? "border-[#757575] ring-2 ring-[#A3A3A3]" : ""
         }`}
       />
       <label htmlFor="terms-agreement-checkbox" className="leading-snug cursor-pointer select-none">
         I have read and agree to the{" "}
         <Link
           href="/terms-of-service"
-          className="font-bold text-[#f85900] hover:underline"
+          className="font-semibold text-[#f85900] hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           Terms of Service
@@ -39,12 +39,12 @@ export function TermsAgreementCheckbox({
         and{" "}
         <Link
           href="/privacy-policy"
-          className="font-bold text-[#f85900] hover:underline"
+          className="font-semibold text-[#f85900] hover:underline"
           onClick={(e) => e.stopPropagation()}
         >
           Privacy Policy
         </Link>
-        . <span className="text-red-500 font-bold">*</span>
+        . <span className="text-[#757575] font-semibold">*</span>
       </label>
     </div>
   );

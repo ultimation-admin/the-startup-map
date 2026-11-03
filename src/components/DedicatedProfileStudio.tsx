@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Listing, CommunityPost, PostReply } from "@/lib/db";
+import type { Listing, CommunityPost, PostReply } from "@/lib/db";
 import {
   ArrowLeftIcon,
   EditIcon,
@@ -23,6 +23,11 @@ interface DedicatedProfileStudioProps {
 }
 
 type StudioTab = "posts" | "replies" | "articles";
+const studioTabs: StudioTab[] = ["posts", "replies", "articles"];
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  return Array.from(new globalThis.Map(items.map((item) => [item.id, item])).values());
+}
 
 export function DedicatedProfileStudio({
   profile,
@@ -34,6 +39,7 @@ export function DedicatedProfileStudio({
   onOpenJobs,
 }: DedicatedProfileStudioProps) {
   const [activeTab, setActiveTab] = useState<StudioTab>("posts");
+  const [profileTabInitialized, setProfileTabInitialized] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   // Profile Form States
@@ -45,18 +51,31 @@ export function DedicatedProfileStudio({
   const [logoUrl, setLogoUrl] = useState(profile.logo_url || "");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [deletingProfile, setDeletingProfile] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Posts & Replies States
   const [profilePosts, setProfilePosts] = useState<CommunityPost[]>([]);
   const [profileReplies, setProfileReplies] = useState<PostReply[]>([]);
   const [loadingContent, setLoadingContent] = useState(true);
+  const [loadingMoreContent, setLoadingMoreContent] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [moreContentError, setMoreContentError] = useState<string | null>(null);
+  const [hasLoadedProfileContent, setHasLoadedProfileContent] = useState(false);
+  const [contentRetry, setContentRetry] = useState(0);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [hasMoreReplies, setHasMoreReplies] = useState(false);
+  const [postsCursor, setPostsCursor] = useState<string | null>(null);
+  const [repliesCursor, setRepliesCursor] = useState<string | null>(null);
 
   // Edit Post Inline State
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingPostText, setEditingPostText] = useState("");
+  const [postActionError, setPostActionError] = useState<string | null>(null);
+  const [postActionLoadingId, setPostActionLoadingId] = useState<string | null>(null);
 
   const handle = (profile.type === "person" ? `p/${profile.slug}` : `s/${profile.slug}`).toLowerCase();
 
@@ -68,33 +87,104 @@ export function DedicatedProfileStudio({
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   };
 
+  const handleStudioTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: StudioTab) => {
+    if (!(["ArrowLeft", "ArrowRight", "Home", "End"] as string[]).includes(event.key)) return;
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? studioTabs.length - 1
+        : (studioTabs.indexOf(currentTab) + direction + studioTabs.length) % studioTabs.length;
+    const nextTab = studioTabs[nextIndex];
+    changeStudioTab(nextTab);
+    document.getElementById(`profile-tab-${nextTab}`)?.focus();
+  };
+
+  const cancelProfileEdit = () => {
+    setName(profile.name);
+    setWebsite(profile.website || "");
+    setPhone(profile.phone_number || "");
+    setDescription(profile.description || "");
+    setTweetUrl(profile.tweet_url || "");
+    setSelectedFile(null);
+    if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+    setLogoUrl(profile.logo_url || "");
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = null;
+    setMessage(null);
+    setIsEditingProfile(false);
+  };
+
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("profileTab");
     if (tab === "articles" || tab === "replies") setActiveTab(tab);
+    setProfileTabInitialized(true);
   }, []);
 
-  // Load Posts & Replies for this Profile Handle
-  const loadProfileContent = useCallback(async () => {
+  // Load activity only when its tab is first opened. Articles use their own endpoint.
+  const loadProfileContent = useCallback(async (signal?: AbortSignal) => {
     setLoadingContent(true);
+    setContentError(null);
     try {
       const queryParams = new URLSearchParams({
-        handle: handle,
         owner_id: profile.owner_id || "",
-        slug: profile.slug || "",
-        name: profile.name || "",
       });
-      const res = await fetch(`/api/posts/profile?${queryParams.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setProfilePosts(data.posts || []);
-        setProfileReplies(data.replies || []);
-      }
+      const res = await fetch(`/api/posts/profile?${queryParams.toString()}`, { signal });
+      if (!res.ok) throw new Error("Profile activity could not be loaded. Please try again.");
+      const data = await res.json();
+      if (signal?.aborted) return;
+      setProfilePosts(uniqueById(data.posts || []));
+      setProfileReplies(uniqueById(data.replies || []));
+      setHasMorePosts(Boolean(data.has_more_posts));
+      setHasMoreReplies(Boolean(data.has_more_replies));
+      setPostsCursor(data.next_posts_cursor || null);
+      setRepliesCursor(data.next_replies_cursor || null);
+      setHasLoadedProfileContent(true);
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
       console.error("Failed to load profile posts/replies:", err);
+      setContentError(err instanceof Error ? err.message : "Profile activity could not be loaded.");
     } finally {
-      setLoadingContent(false);
+      if (!signal?.aborted) setLoadingContent(false);
     }
-  }, [handle, profile.owner_id, profile.slug, profile.name]);
+  }, [profile.owner_id]);
+
+  useEffect(() => {
+    if (!profileTabInitialized || activeTab === "articles" || hasLoadedProfileContent) return;
+    const controller = new AbortController();
+    void loadProfileContent(controller.signal);
+    return () => controller.abort();
+  }, [activeTab, contentRetry, hasLoadedProfileContent, loadProfileContent, profileTabInitialized]);
+
+  const loadMoreProfileContent = async (kind: "posts" | "replies") => {
+    const cursor = kind === "posts" ? postsCursor : repliesCursor;
+    if (!cursor || loadingMoreContent) return;
+
+    setLoadingMoreContent(true);
+    setMoreContentError(null);
+    try {
+      const params = new URLSearchParams({ owner_id: profile.owner_id || "" });
+      params.set(kind === "posts" ? "posts_cursor" : "replies_cursor", cursor);
+      const response = await fetch(`/api/posts/profile?${params.toString()}`);
+      if (!response.ok) throw new Error("More profile activity could not be loaded.");
+      const data = await response.json();
+      if (kind === "posts") {
+        setProfilePosts((current) => uniqueById([...current, ...(data.posts || [])]));
+        setHasMorePosts(Boolean(data.has_more_posts));
+        setPostsCursor(data.next_posts_cursor || null);
+      } else {
+        setProfileReplies((current) => uniqueById([...current, ...(data.replies || [])]));
+        setHasMoreReplies(Boolean(data.has_more_replies));
+        setRepliesCursor(data.next_replies_cursor || null);
+      }
+    } catch (error) {
+      console.error("Failed to load more profile activity:", error);
+      setMoreContentError(error instanceof Error ? error.message : "More activity could not be loaded.");
+    } finally {
+      setLoadingMoreContent(false);
+    }
+  };
 
   useEffect(() => {
     setName(profile.name);
@@ -104,11 +194,7 @@ export function DedicatedProfileStudio({
     setTweetUrl(profile.tweet_url || "");
     setLogoUrl(profile.logo_url || "");
     setMessage(null);
-  }, [profile.id]);
-
-  useEffect(() => {
-    void loadProfileContent();
-  }, [loadProfileContent]);
+  }, [profile.id, profile.name, profile.website, profile.phone_number, profile.description, profile.tweet_url, profile.logo_url]);
 
   useEffect(() => () => {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -117,8 +203,14 @@ export function DedicatedProfileStudio({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (!file.type.startsWith("image/")) {
+        setMessage({ type: "error", text: "Choose an image file." });
+        e.target.value = "";
+        return;
+      }
       if (file.size > 5 * 1024 * 1024) {
         setMessage({ type: "error", text: "Image size exceeds 5MB." });
+        e.target.value = "";
         return;
       }
       setSelectedFile(file);
@@ -161,13 +253,14 @@ export function DedicatedProfileStudio({
 
       setLogoUrl(savedLogoUrl);
       setSelectedFile(null);
+      if (logoFileInputRef.current) logoFileInputRef.current.value = "";
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       previewUrlRef.current = null;
       setMessage({ type: "success", text: "Profile details updated successfully." });
       setIsEditingProfile(false);
       onProfileUpdated?.();
-    } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Failed to update profile." });
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to update profile." });
     } finally {
       setSaving(false);
     }
@@ -175,33 +268,42 @@ export function DedicatedProfileStudio({
 
   const handleDeleteProfile = async () => {
     if (!confirm(`Are you sure you want to delete profile "${profile.name}"?`)) return;
+    setDeletingProfile(true);
+    setMessage(null);
     try {
       const res = await fetch(`/api/listings/${profile.id}`, { method: "DELETE" });
-      if (res.ok) {
-        onProfileUpdated?.();
-        onClose();
-      }
+      if (!res.ok) throw new Error("The profile could not be deleted. Please try again.");
+      onProfileUpdated?.();
+      onClose();
     } catch (err) {
-      alert("Failed to delete profile");
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "The profile could not be deleted." });
+    } finally {
+      setDeletingProfile(false);
     }
   };
 
   const handleDeletePost = async (postId: string) => {
     if (!confirm("Permanently delete this community post?")) return;
+    setPostActionLoadingId(postId);
+    setPostActionError(null);
     try {
       const res = await fetch(`/api/posts/${postId}`, { method: "DELETE" });
-      if (res.ok) {
-        setProfilePosts((prev) => prev.filter((p) => p.id !== postId));
-      } else {
-        alert("Failed to delete post.");
-      }
+      if (!res.ok) throw new Error("The post could not be deleted. Please try again.");
+      setProfilePosts((prev) => prev.filter((p) => p.id !== postId));
     } catch (err) {
-      alert("Failed to delete post");
+      setPostActionError(err instanceof Error ? err.message : "The post could not be deleted.");
+    } finally {
+      setPostActionLoadingId(null);
     }
   };
 
   const handleSaveEditPost = async (postId: string) => {
-    if (!editingPostText.trim()) return;
+    if (!editingPostText.trim()) {
+      setPostActionError("A post can’t be empty.");
+      return;
+    }
+    setPostActionLoadingId(postId);
+    setPostActionError(null);
     try {
       const res = await fetch(`/api/posts/${postId}`, {
         method: "PATCH",
@@ -209,19 +311,20 @@ export function DedicatedProfileStudio({
         body: JSON.stringify({ content: editingPostText }),
       });
 
-      if (res.ok) {
-        setProfilePosts((prev) =>
-          prev.map((p) => (p.id === postId ? { ...p, content: editingPostText } : p))
-        );
-        setEditingPostId(null);
-      }
+      if (!res.ok) throw new Error("The post could not be saved. Please try again.");
+      setProfilePosts((prev) =>
+        prev.map((p) => (p.id === postId ? { ...p, content: editingPostText } : p))
+      );
+      setEditingPostId(null);
     } catch (err) {
-      alert("Failed to edit post");
+      setPostActionError(err instanceof Error ? err.message : "The post could not be saved.");
+    } finally {
+      setPostActionLoadingId(null);
     }
   };
 
   return (
-    <div className="dedicated-profile-studio" style={{ width: "100%", background: "#F2F2F7", minHeight: "100%" }}>
+    <div className="dedicated-profile-studio" style={{ width: "100%", background: "#FFFFFF", minHeight: "100%" }}>
       {/* TWITTER STICKY TOP HEADER BAR */}
       <div
         className="profile-top-header"
@@ -233,10 +336,10 @@ export function DedicatedProfileStudio({
           alignItems: "center",
           gap: "16px",
           padding: "10px 20px",
-          background: "rgba(242, 242, 247, 0.88)",
+          background: "rgba(255, 255, 255, 0.92)",
           backdropFilter: "blur(16px)",
           WebkitBackdropFilter: "blur(16px)",
-          borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
+          borderBottom: "1px solid #E3E3E3",
         }}
       >
         <button
@@ -252,7 +355,7 @@ export function DedicatedProfileStudio({
             borderRadius: "50%",
             border: "none",
             background: "transparent",
-            color: "#0f172a",
+            color: "#000000",
             cursor: "pointer",
             transition: "background-color 0.15s ease",
           }}
@@ -267,7 +370,7 @@ export function DedicatedProfileStudio({
               margin: 0,
               fontSize: "17px",
               fontWeight: 800,
-              color: "#0f172a",
+              color: "#000000",
               letterSpacing: "-0.3px",
               lineHeight: 1.25,
               whiteSpace: "nowrap",
@@ -282,7 +385,7 @@ export function DedicatedProfileStudio({
 
       {/* TWITTER UNBOXED PROFILE HERO SECTION (SIDE-BY-SIDE LAYOUT) */}
       <div className="profile-hero-section" style={{ padding: "16px 20px 14px 20px" }}>
-        <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+        <div className="profile-hero-layout" style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
           {/* LEFT: AVATAR WITH OVERLAY CAMERA UPLOAD BUTTON */}
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div
@@ -291,14 +394,14 @@ export function DedicatedProfileStudio({
                 height: "54px",
                 borderRadius: "50%",
                 overflow: "hidden",
-                background: logoUrl ? "transparent" : "#10b981",
-                color: "#ffffff",
+                background: logoUrl ? "transparent" : "#E3E3E3",
+                color: "#FFFFFF",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 800,
                 fontSize: "18px",
-                border: "2px solid #ffffff",
+                border: "2px solid #FFFFFF",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
               }}
             >
@@ -314,8 +417,8 @@ export function DedicatedProfileStudio({
                 position: "absolute",
                 bottom: "-2px",
                 right: "-2px",
-                background: "#0f172a",
-                color: "#ffffff",
+                background: "#000000",
+                color: "#FFFFFF",
                 borderRadius: "999px",
                 minWidth: "32px",
                 height: "18px",
@@ -333,39 +436,41 @@ export function DedicatedProfileStudio({
             >
               Edit
             </label>}
-            {canManageProfile && <input id="studio-logo-file" type="file" accept="image/*" aria-label="Upload profile image (5MB max)" style={{ display: "none" }} onChange={handleFileUpload} />}
+            {canManageProfile && <input ref={logoFileInputRef} id="studio-logo-file" type="file" accept="image/*" aria-label="Upload profile image (5MB max)" style={{ display: "none" }} onChange={handleFileUpload} />}
           </div>
 
           {/* RIGHT: NAME, USERNAME, EDIT PROFILE BUTTON, DESCRIPTION, METADATA */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="profile-hero-content" style={{ flex: 1, minWidth: 0 }}>
             {/* NAME & EDIT BUTTON ROW */}
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-              <div>
+            <div className="profile-identity-row" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+              <div className="profile-identity-copy">
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
+                  <h2 style={{ margin: 0, fontSize: "19px", fontWeight: 800, color: "#000000", letterSpacing: "-0.3px", lineHeight: 1.2 }}>
                     {name}
                   </h2>
                   {profile.type === "startup" ? (
-                    <span title="Startup profile" style={{ color: "#a34418", fontSize: "9px", fontWeight: 800, letterSpacing: "0.07em", marginLeft: "3px" }}>
+                    <span title="Startup profile" style={{ color: "#757575", fontSize: "9px", fontWeight: 800, letterSpacing: "0.07em", marginLeft: "3px" }}>
                       STARTUP
                     </span>
                   ) : null}
                 </div>
-                <div style={{ fontSize: "14px", color: "#536471", fontWeight: 500, marginTop: "2px" }}>
+                <div style={{ fontSize: "14px", color: "#757575", fontWeight: 500, marginTop: "2px" }}>
                   {handle}
                 </div>
               </div>
 
               {/* EDIT PROFILE ACTION BUTTON */}
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div className="profile-action-group" style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
               {profile.type === "startup" && onOpenJobs && (
                 <button type="button" className="btn-outline-pill" onClick={() => onOpenJobs(profile)}>
                   Jobs
                 </button>
               )}
+              {onSelectListingOnMap && <button type="button" className="btn-outline-pill" onClick={() => onSelectListingOnMap(profile)}>View on map</button>}
               {canManageProfile && <button
                 type="button"
-                onClick={() => setIsEditingProfile((prev) => !prev)}
+                disabled={saving}
+                onClick={() => isEditingProfile ? cancelProfileEdit() : setIsEditingProfile(true)}
                 className={`btn-outline-pill ${isEditingProfile ? "active" : ""}`}
               >
                 {isEditingProfile ? "Cancel" : "Edit profile"}
@@ -379,7 +484,7 @@ export function DedicatedProfileStudio({
                 style={{
                   margin: "8px 0 8px 0",
                   fontSize: "14px",
-                  color: "#0f172a",
+                  color: "#000000",
                   lineHeight: 1.45,
                   wordBreak: "break-word",
                 }}
@@ -390,12 +495,13 @@ export function DedicatedProfileStudio({
 
             {/* METADATA ROW */}
             <div
+              className="profile-hero-meta"
               style={{
                 display: "flex",
                 flexWrap: "wrap",
                 gap: "10px 16px",
                 fontSize: "13px",
-                color: "#536471",
+                color: "#757575",
                 marginTop: "6px",
               }}
             >
@@ -413,7 +519,7 @@ export function DedicatedProfileStudio({
                     href={website.startsWith("http") ? website : `https://${website}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ color: "#f85900", textDecoration: "none", fontWeight: 600 }}
+                    style={{ color: "#000000", textDecoration: "none", fontWeight: 600 }}
                   >
                     {website.replace(/^https?:\/\//, "")}
                   </a>
@@ -430,7 +536,7 @@ export function DedicatedProfileStudio({
 
       {/* EDIT PROFILE FORM (DISPLAYED WHEN EDIT PROFILE IS ACTIVE) */}
       {isEditingProfile ? (
-        <div style={{ padding: "20px", borderTop: "1px solid rgba(0, 0, 0, 0.08)", background: "#ffffff" }}>
+        <div style={{ padding: "20px", borderTop: "1px solid #E3E3E3", background: "#FFFFFF" }}>
           <form onSubmit={handleSaveChanges}>
             {message && (
               <div
@@ -439,8 +545,8 @@ export function DedicatedProfileStudio({
                   padding: "12px 16px",
                   borderRadius: "10px",
                   marginBottom: "16px",
-                  background: message.type === "success" ? "#dcfce7" : "#fee2e2",
-                  color: message.type === "success" ? "#16a34a" : "#dc2626",
+                  background: message.type === "success" ? "#E3E3E3" : "#E3E3E3",
+                  color: message.type === "success" ? "#000000" : "#000000",
                   fontWeight: 700,
                   fontSize: "13.5px",
                 }}
@@ -451,7 +557,7 @@ export function DedicatedProfileStudio({
 
             <div className="profile-edit-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "14px" }}>
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>FULL NAME / COMPANY</label>
+                <label style={{ fontSize: "12px", fontWeight: 800, color: "#757575", letterSpacing: "0.5px" }}>FULL NAME / COMPANY</label>
                 <input
                   type="text"
                   value={name}
@@ -461,7 +567,7 @@ export function DedicatedProfileStudio({
                 />
               </div>
               <div>
-                <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>PHONE NUMBER (OPTIONAL)</label>
+                <label style={{ fontSize: "12px", fontWeight: 800, color: "#757575", letterSpacing: "0.5px" }}>PHONE NUMBER (OPTIONAL)</label>
                 <small>This number is public on your profile.</small>
                 <input
                   type="tel"
@@ -473,7 +579,7 @@ export function DedicatedProfileStudio({
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>WEBSITE / PORTFOLIO URL</label>
+              <label style={{ fontSize: "12px", fontWeight: 800, color: "#757575", letterSpacing: "0.5px" }}>WEBSITE / PORTFOLIO URL</label>
               <input
                 type="url"
                 value={website}
@@ -483,7 +589,7 @@ export function DedicatedProfileStudio({
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>X / TWITTER URL (OPTIONAL)</label>
+              <label style={{ fontSize: "12px", fontWeight: 800, color: "#757575", letterSpacing: "0.5px" }}>X / TWITTER URL (OPTIONAL)</label>
               <input
                 type="url"
                 value={tweetUrl}
@@ -494,7 +600,7 @@ export function DedicatedProfileStudio({
             </div>
 
             <div style={{ marginBottom: "14px" }}>
-              <label style={{ fontSize: "12px", fontWeight: 800, color: "#536471", letterSpacing: "0.5px" }}>SHORT BIO / DESCRIPTION</label>
+              <label style={{ fontSize: "12px", fontWeight: 800, color: "#757575", letterSpacing: "0.5px" }}>SHORT BIO / DESCRIPTION</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -517,6 +623,7 @@ export function DedicatedProfileStudio({
               </button>}
               <button
                 type="button"
+                disabled={deletingProfile}
                 onClick={handleDeleteProfile}
                 style={{
                   display: "inline-flex",
@@ -525,15 +632,15 @@ export function DedicatedProfileStudio({
                   padding: "10px 18px",
                   borderRadius: "9999px",
                   border: "none",
-                  background: "#fee2e2",
-                  color: "#dc2626",
+                  background: "#E3E3E3",
+                  color: "#000000",
                   fontWeight: 700,
                   cursor: "pointer",
                   fontSize: "14px",
                   boxShadow: "none",
                 }}
               >
-                <TrashIcon size={16} /> Delete Profile
+                <TrashIcon size={16} /> {deletingProfile ? "Deleting…" : "Delete Profile"}
               </button>
             </div>
           </form>
@@ -543,23 +650,31 @@ export function DedicatedProfileStudio({
           {/* TWITTER PROFILE NAVIGATION TAB STRIP (LEFT-ALIGNED AT LEFT CORNER) */}
           <div
             className="profile-nav-tabs"
+            role="tablist"
+            aria-label={`${name} profile content`}
             style={{
               display: "flex",
               gap: "32px",
               justifyContent: "flex-start",
               padding: "0 20px",
-              borderBottom: "1px solid rgba(0, 0, 0, 0.08)",
+              borderBottom: "1px solid #E3E3E3",
               background: "transparent",
             }}
           >
             <button
+              id="profile-tab-posts"
+              role="tab"
+              aria-controls="profile-panel-posts"
+              aria-selected={activeTab === "posts"}
+              tabIndex={activeTab === "posts" ? 0 : -1}
               type="button"
               onClick={() => changeStudioTab("posts")}
+              onKeyDown={(event) => handleStudioTabKeyDown(event, "posts")}
               style={{
                 padding: "12px 0",
                 border: "none",
                 background: "transparent",
-                color: activeTab === "posts" ? "#0f172a" : "#536471",
+                color: activeTab === "posts" ? "#000000" : "#757575",
                 fontWeight: activeTab === "posts" ? 800 : 600,
                 fontSize: "14.5px",
                 cursor: "pointer",
@@ -584,13 +699,19 @@ export function DedicatedProfileStudio({
             </button>
 
             <button
+              id="profile-tab-replies"
+              role="tab"
+              aria-controls="profile-panel-replies"
+              aria-selected={activeTab === "replies"}
+              tabIndex={activeTab === "replies" ? 0 : -1}
               type="button"
               onClick={() => changeStudioTab("replies")}
+              onKeyDown={(event) => handleStudioTabKeyDown(event, "replies")}
               style={{
                 padding: "12px 0",
                 border: "none",
                 background: "transparent",
-                color: activeTab === "replies" ? "#0f172a" : "#536471",
+                color: activeTab === "replies" ? "#000000" : "#757575",
                 fontWeight: activeTab === "replies" ? 800 : 600,
                 fontSize: "14.5px",
                 cursor: "pointer",
@@ -615,13 +736,19 @@ export function DedicatedProfileStudio({
             </button>
 
             <button
+              id="profile-tab-articles"
+              role="tab"
+              aria-controls="profile-panel-articles"
+              aria-selected={activeTab === "articles"}
+              tabIndex={activeTab === "articles" ? 0 : -1}
               type="button"
               onClick={() => changeStudioTab("articles")}
+              onKeyDown={(event) => handleStudioTabKeyDown(event, "articles")}
               style={{
                 padding: "12px 0",
                 border: "none",
                 background: "transparent",
-                color: activeTab === "articles" ? "#0f172a" : "#536471",
+                color: activeTab === "articles" ? "#000000" : "#757575",
                 fontWeight: activeTab === "articles" ? 800 : 600,
                 fontSize: "14.5px",
                 cursor: "pointer",
@@ -638,8 +765,18 @@ export function DedicatedProfileStudio({
 
           {/* TAB 1: POSTS (TWITTER UNBOXED TIMELINE FEED) */}
           {activeTab === "posts" && (
-            <div className="profile-timeline-feed">
-              {loadingContent ? (
+            <div id="profile-panel-posts" role="tabpanel" tabIndex={0} aria-labelledby="profile-tab-posts" className="profile-timeline-feed">
+              {contentError ? (
+                <div className="profile-content-error" role="alert">
+                  <p>{contentError}</p>
+                  <button type="button" onClick={() => setContentRetry((attempt) => attempt + 1)}>Try again</button>
+                </div>
+              ) : postActionError ? (
+                <div className="profile-content-error" role="alert">
+                  <p>{postActionError}</p>
+                  <button type="button" onClick={() => setPostActionError(null)}>Dismiss</button>
+                </div>
+              ) : loadingContent ? (
                 <CommunityFeedSkeleton count={2} />
               ) : profilePosts.length === 0 ? (
                 <EmptyFeedState
@@ -659,8 +796,8 @@ export function DedicatedProfileStudio({
                           width: "40px",
                           height: "40px",
                           borderRadius: "50%",
-                          background: logoUrl ? "transparent" : "#f85900",
-                          color: "#ffffff",
+                          background: logoUrl ? "transparent" : "#000000",
+                          color: "#FFFFFF",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -670,17 +807,17 @@ export function DedicatedProfileStudio({
                           overflow: "hidden",
                         }}
                       >
-                        {logoUrl ? <img src={logoUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : profile.initials}
+                        {logoUrl ? <img src={logoUrl} alt={name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : profile.initials}
                       </div>
 
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                        <div className="profile-post-meta" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                            <b style={{ fontSize: "14.5px", color: "#0f172a", fontWeight: 800 }}>{handle.toLowerCase()}</b>
-                            <span style={{ fontSize: "13px", color: "#536471" }}>&bull;</span>
-                            <small style={{ color: "#536471", fontSize: "13px" }}>{new Date(post.created_at).toLocaleDateString()}</small>
+                            <b style={{ fontSize: "14.5px", color: "#000000", fontWeight: 800 }}>{handle.toLowerCase()}</b>
+                            <span style={{ fontSize: "13px", color: "#757575" }}>&bull;</span>
+                            <small style={{ color: "#757575", fontSize: "13px" }}>{new Date(post.created_at).toLocaleDateString()}</small>
                           </div>
-                          <span style={{ background: "rgba(248, 89, 0, 0.1)", color: "#f85900", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>
+                          <span className="profile-post-community" style={{ background: "#E3E3E3", color: "#000000", padding: "2px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700 }}>
                             {post.community_name}
                           </span>
                         </div>
@@ -698,38 +835,40 @@ export function DedicatedProfileStudio({
                               <button type="button" onClick={() => setEditingPostId(null)} className="btn-outline-pill">
                                 Cancel
                               </button>
-                              <button type="button" onClick={() => handleSaveEditPost(post.id)} className="btn-solid-emerald">
-                                Save
+                              <button type="button" disabled={postActionLoadingId === post.id} onClick={() => void handleSaveEditPost(post.id)} className="btn-solid-emerald">
+                                {postActionLoadingId === post.id ? "Saving…" : "Save"}
                               </button>
                             </div>
                           </div>
                         ) : (
                           <>
-                            <p style={{ margin: "4px 0 10px 0", fontSize: "14.5px", color: "#0f172a", lineHeight: "1.5", wordBreak: "break-word" }}>{post.content}</p>
+                            <p style={{ margin: "4px 0 10px 0", fontSize: "14.5px", color: "#000000", lineHeight: "1.5", wordBreak: "break-word" }}>{post.content}</p>
 
                             {post.image_url && (
-                              <div style={{ marginTop: "8px", marginBottom: "10px", borderRadius: "14px", overflow: "hidden", border: "1px solid rgba(0,0,0,0.06)" }}>
-                                <img src={post.image_url} alt="Attachment" style={{ width: "100%", maxHeight: "320px", objectFit: "cover", display: "block" }} />
+                              <div className="profile-post-media" style={{ marginTop: "8px", marginBottom: "10px", borderRadius: "14px", overflow: "hidden", border: "1px solid rgba(0,0,0,0.06)" }}>
+                                <img src={post.image_url} alt="Post attachment" loading="lazy" decoding="async" style={{ width: "100%", maxHeight: "320px", objectFit: "cover", display: "block" }} />
                               </div>
                             )}
 
                             <div style={{ display: "flex", gap: "16px", alignItems: "center", justifyContent: "flex-end", marginTop: "8px" }}>
                               <button
                                 type="button"
+                                disabled={postActionLoadingId === post.id}
                                 onClick={() => {
                                   setEditingPostId(post.id);
                                   setEditingPostText(post.content);
                                 }}
-                                style={{ display: "inline-flex", alignItems: "center", gap: "4px", border: "none", background: "transparent", color: "#536471", fontWeight: 600, fontSize: "12.5px", cursor: "pointer" }}
+                                style={{ display: "inline-flex", alignItems: "center", gap: "4px", border: "none", background: "transparent", color: "#757575", fontWeight: 600, fontSize: "12.5px", cursor: "pointer" }}
                               >
                                 <EditIcon size={14} /> Edit
                               </button>
                               <button
                                 type="button"
+                                disabled={postActionLoadingId === post.id}
                                 onClick={() => handleDeletePost(post.id)}
-                                style={{ display: "inline-flex", alignItems: "center", gap: "4px", border: "none", background: "transparent", color: "#ef4444", fontWeight: 600, fontSize: "12.5px", cursor: "pointer" }}
+                                style={{ display: "inline-flex", alignItems: "center", gap: "4px", border: "none", background: "transparent", color: "#000000", fontWeight: 600, fontSize: "12.5px", cursor: "pointer" }}
                               >
-                                <TrashIcon size={14} /> Delete
+                                <TrashIcon size={14} /> {postActionLoadingId === post.id ? "Deleting…" : "Delete"}
                               </button>
                             </div>
                           </>
@@ -737,6 +876,14 @@ export function DedicatedProfileStudio({
                       </div>
                     </div>
                   ))}
+                  {hasMorePosts && (
+                    <>
+                      {moreContentError && <div className="profile-content-error" role="alert"><p>{moreContentError}</p><button type="button" disabled={loadingMoreContent} onClick={() => void loadMoreProfileContent("posts")}>Try again</button></div>}
+                      <button type="button" className="btn-outline-pill" disabled={loadingMoreContent} onClick={() => void loadMoreProfileContent("posts")} style={{ alignSelf: "center", margin: "16px 0 24px" }}>
+                        {loadingMoreContent ? "Loading…" : "Load more posts"}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -744,36 +891,53 @@ export function DedicatedProfileStudio({
 
           {/* TAB 2: REPLIES (TWITTER UNBOXED TIMELINE FEED) */}
           {activeTab === "replies" && (
-            <div className="profile-replies-feed">
-              {loadingContent ? (
-                <div style={{ padding: "32px", textAlign: "center", color: "#536471" }}>Loading replies...</div>
+            <div id="profile-panel-replies" role="tabpanel" tabIndex={0} aria-labelledby="profile-tab-replies" className="profile-replies-feed">
+              {contentError ? (
+                <div className="profile-content-error" role="alert">
+                  <p>{contentError}</p>
+                  <button type="button" onClick={() => setContentRetry((attempt) => attempt + 1)}>Try again</button>
+                </div>
+              ) : loadingContent ? (
+                <div style={{ padding: "32px", textAlign: "center", color: "#757575" }}>Loading replies...</div>
               ) : profileReplies.length === 0 ? (
-                <div style={{ padding: "40px 20px", textAlign: "center", color: "#536471", fontSize: "14.5px" }}>
+                <div style={{ padding: "40px 20px", textAlign: "center", color: "#757575", fontSize: "14.5px" }}>
                   No replies published yet by {name}.
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {profileReplies.map((reply) => (
                     <div key={reply.id} className="timeline-row-item" style={{ padding: "14px 20px" }}>
-                      <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: logoUrl ? "transparent" : "#f85900", color: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "13px", flexShrink: 0, overflow: "hidden" }}>
-                        {logoUrl ? <img src={logoUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : profile.initials}
+                      <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: logoUrl ? "transparent" : "#000000", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "13px", flexShrink: 0, overflow: "hidden" }}>
+                        {logoUrl ? <img src={logoUrl} alt={name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : profile.initials}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
-                          <b style={{ fontSize: "14px", color: "#0f172a", fontWeight: 800 }}>{handle.toLowerCase()}</b>
-                          <span style={{ fontSize: "13px", color: "#536471" }}>&bull;</span>
-                          <small style={{ color: "#536471", fontSize: "13px" }}>{new Date(reply.created_at).toLocaleDateString()}</small>
+                          <b style={{ fontSize: "14px", color: "#000000", fontWeight: 800 }}>{handle.toLowerCase()}</b>
+                          <span style={{ fontSize: "13px", color: "#757575" }}>&bull;</span>
+                          <small style={{ color: "#757575", fontSize: "13px" }}>{new Date(reply.created_at).toLocaleDateString()}</small>
                         </div>
-                        <p style={{ margin: "2px 0 0 0", fontSize: "14.5px", color: "#0f172a", lineHeight: "1.5" }}>{reply.content}</p>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "14.5px", color: "#000000", lineHeight: "1.5" }}>{reply.content}</p>
                       </div>
                     </div>
                   ))}
+                  {hasMoreReplies && (
+                    <>
+                      {moreContentError && <div className="profile-content-error" role="alert"><p>{moreContentError}</p><button type="button" disabled={loadingMoreContent} onClick={() => void loadMoreProfileContent("replies")}>Try again</button></div>}
+                      <button type="button" className="btn-outline-pill" disabled={loadingMoreContent} onClick={() => void loadMoreProfileContent("replies")} style={{ alignSelf: "center", margin: "16px 0 24px" }}>
+                        {loadingMoreContent ? "Loading…" : "Load more replies"}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {activeTab === "articles" && <ProfileArticles key={profile.id} profile={profile} canManageArticles={canManageArticles} />}
+          {activeTab === "articles" && (
+            <div id="profile-panel-articles" role="tabpanel" tabIndex={0} aria-labelledby="profile-tab-articles">
+              <ProfileArticles key={profile.id} profile={profile} canManageArticles={canManageArticles} />
+            </div>
+          )}
         </>
       )}
     </div>

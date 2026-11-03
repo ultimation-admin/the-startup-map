@@ -1,6 +1,6 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
-import { Listing } from "@/lib/db";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import type { Listing } from "@/lib/db";
 
 type Post = {
   id: string;
@@ -20,6 +20,7 @@ export interface SearchPageProps {
   onQueryChange?: (q: string) => void;
   selectedCategory?: ExploreCategory;
   onCategoryChange?: (category: ExploreCategory) => void;
+  viewMode?: "search" | "map";
   mobileTab?: "feed" | "map";
   onToggleMobileTab?: (tab: "feed" | "map") => void;
   onOpenStudio?: (listing: Listing) => void;
@@ -33,6 +34,7 @@ export function SearchPage({
   onQueryChange,
   selectedCategory: externalCategory,
   onCategoryChange,
+  viewMode = "search",
   mobileTab,
   onToggleMobileTab,
   onOpenStudio,
@@ -56,26 +58,27 @@ export function SearchPage({
     }
   }, [setQuery]);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/posts?limit=50")
-      .then(async (r) => {
-        if (!r.ok) throw new Error("Search is temporarily unavailable.");
-        return r.json();
-      })
-      .then((data) => {
-        if (!cancelled) setPosts(data.posts || []);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Search is temporarily unavailable.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+  const loadPosts = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/posts?limit=50", { signal, cache: "no-store" });
+      if (!response.ok) throw new Error("Search is temporarily unavailable.");
+      const data = await response.json();
+      if (!signal?.aborted) setPosts(Array.isArray(data.posts) ? data.posts : []);
+    } catch (reason) {
+      if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) return;
+      setError(reason instanceof Error ? reason.message : "Search is temporarily unavailable.");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPosts(controller.signal);
+    return () => controller.abort();
+  }, [loadPosts]);
 
   const q = query.trim().toLowerCase();
 
@@ -110,44 +113,13 @@ export function SearchPage({
   return (
     <section className="tab-page search-page explore-page">
       <header className="tab-page-heading">
-        <p className="eyebrow">ECOSYSTEM DISCOVERY</p>
+        <p className="eyebrow">{viewMode === "map" ? "STARTUP MAP" : "ECOSYSTEM SEARCH"}</p>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-          <h1>Explore</h1>
-          <span className="explore-pill-count">{results.length} on map</span>
+          <h1>{viewMode === "map" ? "Map" : "Search"}</h1>
+          <span className="explore-pill-count">{category === "Posts" ? postResults.length : results.length} {category === "Posts" ? "posts" : "on map"}</span>
         </div>
-        <p>Find people, startups, and conversations across India.</p>
+        <p>{viewMode === "map" ? "Explore startups and people across India." : "Find people, startups, and conversations across India."}</p>
       </header>
-
-      {onToggleMobileTab && (
-        <div className="explore-mobile-toggle mobile-only">
-          <button
-            type="button"
-            className={`explore-mode-btn ${mobileTab === "feed" ? "active" : ""}`}
-            onClick={() => onToggleMobileTab("feed")}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            <span>List ({results.length})</span>
-          </button>
-          <button
-            type="button"
-            className={`explore-mode-btn ${mobileTab === "map" ? "active" : ""}`}
-            onClick={() => onToggleMobileTab("map")}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <circle cx="12" cy="12" r="10" />
-              <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88" fill="currentColor" />
-            </svg>
-            <span>Map View</span>
-          </button>
-        </div>
-      )}
 
       <div className="explore-sticky-header">
         <label className="universal-search-field">
@@ -202,7 +174,7 @@ export function SearchPage({
         </section>
       )}
 
-      {error && <p className="tab-error" role="alert">{error}</p>}
+      {error && <div className="tab-error" role="alert"><p>{error}</p><button type="button" onClick={() => void loadPosts()}>Try again</button></div>}
 
       <div className="search-results">
         {category !== "Posts" &&
@@ -229,11 +201,11 @@ export function SearchPage({
             </button>
           ))}
 
-        {category !== "Startups" &&
+          {category !== "Startups" &&
           category !== "People" &&
           (loading ? (
             <p className="tab-loading" role="status">Loading discussions…</p>
-          ) : (
+          ) : error ? null : (
             postResults.map((post) => (
               <a className="search-result-row" key={post.id} href={"/#post-" + post.id}>
                 <span className="search-result-avatar search-result-post" aria-hidden="true">
@@ -247,7 +219,7 @@ export function SearchPage({
             ))
           ))}
 
-        {!results.length && (!postResults.length && !loading) && (
+        {!error && !results.length && (!postResults.length && !loading) && (
           <div className="tab-empty-state">
             <h2>{q ? "No results found" : "Explore the Startup Map"}</h2>
             <p>{q ? "Try another name, sector, city, or keyword." : "Search for profiles and conversations above."}</p>

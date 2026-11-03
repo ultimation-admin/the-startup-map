@@ -99,6 +99,7 @@ export interface PostReply {
   parent_reply_id?: string;
   reply_to_user?: string;
   upvotes_count?: number;
+  viewer_liked?: boolean;
 }
 
 export interface Community {
@@ -210,16 +211,114 @@ function rowToListing(row: Record<string, unknown>): Listing {
 // Listings CRUD
 // =========================================================================
 
-export async function fetchListings(): Promise<Listing[]> {
+export interface ListingSearchFilters {
+  city?: string;
+  type?: string;
+  sector?: string;
+  stage?: string;
+  role?: string;
+  vcStage?: string;
+  vcType?: string;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export async function fetchListings(filters: ListingSearchFilters = {}): Promise<{
+  listings: Listing[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}> {
   try {
+    const conditions = ["review_state != ?"];
+    const params: unknown[] = ["rejected"];
+    const addContains = (expression: string, value?: string) => {
+      const clean = value?.trim().slice(0, 100).toLowerCase();
+      if (!clean) return;
+      conditions.push(`LOWER(${expression}) LIKE ? ESCAPE '\\'`);
+      params.push(`%${clean.replace(/[\\%_]/g, "\\$&")}%`);
+    };
+
+    const type = filters.type?.toLowerCase();
+    const typeMap: Record<string, string> = {
+      startups: "startup",
+      startup: "startup",
+      people: "person",
+      person: "person",
+      vcs: "vc",
+      vc: "vc",
+    };
+    if (type && type !== "all types" && typeMap[type]) {
+      conditions.push("LOWER(type) = ?");
+      params.push(typeMap[type]);
+    }
+
+    const city = filters.city?.trim().slice(0, 100).toLowerCase();
+    if (city && city !== "all cities") {
+      if (city === "delhi ncr") {
+        conditions.push("(LOWER(city) LIKE ? OR LOWER(city) LIKE ? OR LOWER(city) LIKE ? OR LOWER(city) LIKE ?)");
+        params.push("%delhi%", "%ncr%", "%gurugram%", "%noida%");
+      } else {
+        conditions.push("LOWER(city) = ?");
+        params.push(city);
+      }
+    }
+
+    const sector = filters.sector?.trim().slice(0, 100).toLowerCase();
+    if (sector && sector !== "all sectors") {
+      if (sector === "others") {
+        conditions.push("LOWER(COALESCE(sector, '')) NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        params.push("ai", "saas", "d2c", "e-commerce", "fintech", "edtech", "healthtech", "ev/mobility", "gaming", "logistics", "entertainment", "manufacturing");
+      } else {
+        conditions.push("LOWER(COALESCE(sector, '')) = ?");
+        params.push(sector);
+      }
+    }
+
+    if (filters.stage?.trim()) {
+      conditions.push("LOWER(COALESCE(stage, '')) = ?");
+      params.push(filters.stage.trim().slice(0, 100).toLowerCase());
+    }
+    addContains("COALESCE(description, '') || ' ' || COALESCE(sector, '')", filters.role);
+    addContains("COALESCE(stage, '')", filters.vcStage);
+    addContains("COALESCE(sector, '') || ' ' || COALESCE(description, '')", filters.vcType);
+
+    const query = filters.query?.trim().slice(0, 100).toLowerCase();
+    if (query) {
+      conditions.push("(LOWER(name) LIKE ? OR LOWER(city) LIKE ? OR LOWER(sector) LIKE ? OR LOWER(COALESCE(stage, '')) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?)");
+      const pattern = `%${query.replace(/[\\%_]/g, "\\$&")}%`;
+      params.push(pattern, pattern, pattern, pattern, pattern);
+    }
+
+    const cursor = filters.cursor || "";
+    const separator = cursor.indexOf("|");
+    const cursorDate = separator > 0 ? cursor.slice(0, separator) : "";
+    const cursorId = separator > 0 ? cursor.slice(separator + 1).slice(0, 100) : "";
+    if (cursorDate && cursorId && Number.isFinite(Date.parse(cursorDate))) {
+      conditions.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(cursorDate, cursorDate, cursorId);
+    }
+    const pageSize = Number.isFinite(filters.limit)
+      ? Math.min(500, Math.max(1, Math.trunc(Number(filters.limit))))
+      : 250;
+    params.push(pageSize + 1);
+
     const rows = await d1Query(
-      "SELECT * FROM listings WHERE review_state != ? ORDER BY created_at DESC",
-      ["rejected"]
+      `SELECT * FROM listings WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ?`,
+      params
     );
-    return rows.map(rowToListing);
+    const page = rows.slice(0, pageSize);
+    const last = page[page.length - 1];
+    return {
+      listings: page.map(rowToListing),
+      hasMore: rows.length > pageSize,
+      nextCursor: rows.length > pageSize && last
+        ? `${String(last.created_at)}|${String(last.id)}`
+        : null,
+    };
   } catch (err) {
     console.warn("fetchListings D1 query error, returning empty array:", err);
-    return [];
+    return { listings: [], hasMore: false, nextCursor: null };
   }
 }
 
@@ -749,6 +848,7 @@ export async function isAdminUser(userId: string): Promise<boolean> {
 export async function fetchCommunityPosts(filters?: {
   communityId?: string;
   userId?: string;
+  viewerId?: string;
   cursor?: string;
   limit?: number;
 }): Promise<CommunityPost[]> {
@@ -756,23 +856,23 @@ export async function fetchCommunityPosts(filters?: {
     const nowIso = new Date().toISOString();
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // Purge expired posts older than 24 hours permanently from D1 database
+    // Clean up a small batch of expired posts opportunistically. A full sweep
+    // here made every feed request scan and delete an unbounded number of rows.
     try {
       const expiredPosts = await d1Query<{ id: string }>(
-        "SELECT id FROM community_posts WHERE created_at <= ? OR expires_at <= ?",
+        "SELECT id FROM community_posts WHERE created_at <= ? OR expires_at <= ? ORDER BY created_at ASC LIMIT 5",
         [cutoff24h, nowIso]
       );
 
       if (expiredPosts.length > 0) {
-        for (const expired of expiredPosts) {
-          await deleteCommunityPost(expired.id);
-        }
+        await Promise.all(expiredPosts.map(({ id }) => deleteCommunityPost(id)));
       }
     } catch (err) {
-      // Ignore purge failure in offline mode
+      // Ignore cleanup failure so it cannot prevent the active feed from loading.
     }
 
-    const limit = filters?.limit ?? 20;
+    const requestedLimit = Number.isFinite(filters?.limit) ? Number(filters?.limit) : 20;
+    const limit = Math.min(50, Math.max(1, Math.trunc(requestedLimit)));
     const conditions: string[] = ["created_at > ?", "expires_at > ?"];
     const params: unknown[] = [cutoff24h, nowIso];
 
@@ -803,68 +903,27 @@ export async function fetchCommunityPosts(filters?: {
     const postIds = rows.map((r) => String(r.id));
     const placeholders = postIds.map(() => "?").join(",");
 
-    let allReplies: Record<string, unknown>[] = [];
-    let allLikes: Record<string, unknown>[] = [];
-    let allReposts: Record<string, unknown>[] = [];
-
-    try {
-      allReplies = await d1Query<Record<string, unknown>>(
-        `SELECT * FROM post_replies WHERE post_id IN (${placeholders}) ORDER BY created_at ASC`,
+    const [repostCounts, likedRows, repostedRows] = await Promise.all([
+      d1Query<Record<string, unknown>>(
+        `SELECT post_id, COUNT(*) AS count FROM post_reposts WHERE post_id IN (${placeholders}) GROUP BY post_id`,
         postIds
-      );
-    } catch (err) {
-      console.error("Error fetching post_replies batch:", err);
-    }
-
-    try {
-      allLikes = await d1Query<Record<string, unknown>>(
-        `SELECT target_id, user_id FROM post_likes WHERE target_type = 'post' AND target_id IN (${placeholders})`,
-        postIds
-      );
-    } catch (err) {
-      console.error("Error fetching post_likes batch:", err);
-    }
-
-    try {
-      allReposts = await d1Query<Record<string, unknown>>(
-        "SELECT post_id, user_id FROM post_reposts WHERE post_id IN (" + placeholders + ")",
-        postIds
-      );
-    } catch (err) {
-      console.error("Error fetching post_reposts batch:", err);
-    }
-
-    const repliesByPostId = new Map<string, PostReply[]>();
-    for (const r of allReplies) {
-      const pId = String(r.post_id);
-      if (!repliesByPostId.has(pId)) repliesByPostId.set(pId, []);
-      repliesByPostId.get(pId)!.push({
-        id: String(r.id),
-        post_id: pId,
-        user_id: String(r.user_id),
-        user_name: String(r.user_name),
-        user_avatar: r.user_avatar ? (getPublicMediaUrl(String(r.user_avatar)) || undefined) : undefined,
-        user_initials: String(r.user_initials),
-        content: String(r.content),
-        created_at: String(r.created_at),
-        parent_reply_id: r.parent_reply_id ? String(r.parent_reply_id) : undefined,
-        reply_to_user: r.reply_to_user ? String(r.reply_to_user) : undefined,
-      });
-    }
-
-    const likesByPostId = new Map<string, string[]>();
-    for (const l of allLikes) {
-      const pId = String(l.target_id);
-      if (!likesByPostId.has(pId)) likesByPostId.set(pId, []);
-      likesByPostId.get(pId)!.push(String(l.user_id));
-    }
-
-    const repostsByPostId = new Map<string, string[]>();
-    for (const repost of allReposts) {
-      const postId = String(repost.post_id);
-      if (!repostsByPostId.has(postId)) repostsByPostId.set(postId, []);
-      repostsByPostId.get(postId)!.push(String(repost.user_id));
-    }
+      ),
+      filters?.viewerId
+        ? d1Query<Record<string, unknown>>(
+            `SELECT target_id FROM post_likes WHERE target_type = 'post' AND user_id = ? AND target_id IN (${placeholders})`,
+            [filters.viewerId, ...postIds]
+          )
+        : Promise.resolve([]),
+      filters?.viewerId
+        ? d1Query<Record<string, unknown>>(
+            `SELECT post_id FROM post_reposts WHERE user_id = ? AND post_id IN (${placeholders})`,
+            [filters.viewerId, ...postIds]
+          )
+        : Promise.resolve([]),
+    ]);
+    const repostCountsByPostId = new Map(repostCounts.map((item) => [String(item.post_id), Number(item.count || 0)]));
+    const likedPostIds = new Set(likedRows.map((item) => String(item.target_id)));
+    const repostedPostIds = new Set(repostedRows.map((item) => String(item.post_id)));
 
     return rows.map((row) => {
       const postId = String(row.id);
@@ -880,12 +939,12 @@ export async function fetchCommunityPosts(filters?: {
         content: String(row.content),
         image_url: row.image_url ? (getPublicMediaUrl(String(row.image_url)) || undefined) : undefined,
         likes_count: Number(row.likes_count),
-        reposts_count: repostsByPostId.get(postId)?.length || 0,
-        reposted_by: repostsByPostId.get(postId) || [],
+        reposts_count: repostCountsByPostId.get(postId) || 0,
+        reposted_by: repostedPostIds.has(postId) && filters?.viewerId ? [filters.viewerId] : [],
         views_count: Number(row.views_count),
-        replies_count: Math.max(Number(row.replies_count || 0), (repliesByPostId.get(postId) || []).length),
-        liked_by: likesByPostId.get(postId) || [],
-        replies: repliesByPostId.get(postId) || [],
+        replies_count: Number(row.replies_count || 0),
+        liked_by: likedPostIds.has(postId) && filters?.viewerId ? [filters.viewerId] : [],
+        replies: [],
         created_at: String(row.created_at),
         expires_at: String(row.expires_at),
       };
@@ -1032,6 +1091,34 @@ export async function togglePostLike(
 
     return { liked: true, likes_count: Number(post?.likes_count ?? 0) };
   }
+}
+
+export async function togglePostReplyLike(
+  replyId: string,
+  userId: string
+): Promise<{ liked: boolean; likes_count: number } | null> {
+  const reply = await d1QueryFirst<{ id: string }>("SELECT id FROM post_replies WHERE id = ? LIMIT 1", [replyId]);
+  if (!reply) return null;
+
+  const existing = await d1QueryFirst<{ id: string }>(
+    "SELECT id FROM post_likes WHERE user_id = ? AND target_type = 'reply' AND target_id = ?",
+    [userId, replyId]
+  );
+
+  if (existing) {
+    await d1Execute("DELETE FROM post_likes WHERE user_id = ? AND target_type = 'reply' AND target_id = ?", [userId, replyId]);
+  } else {
+    await d1Execute(
+      "INSERT OR IGNORE INTO post_likes (id, user_id, target_type, target_id) VALUES (?, ?, 'reply', ?)",
+      [crypto.randomUUID(), userId, replyId]
+    );
+  }
+
+  const [count, liked] = await Promise.all([
+    d1QueryFirst<{ count: number }>("SELECT COUNT(*) AS count FROM post_likes WHERE target_type = 'reply' AND target_id = ?", [replyId]),
+    d1QueryFirst<{ id: string }>("SELECT id FROM post_likes WHERE user_id = ? AND target_type = 'reply' AND target_id = ?", [userId, replyId]),
+  ]);
+  return { liked: Boolean(liked), likes_count: Number(count?.count || 0) };
 }
 
 
@@ -1190,14 +1277,35 @@ export async function deletePostReply(replyId: string, userId: string): Promise<
     if (!existing || existing.user_id !== userId) {
       return false;
     }
+    const descendants = await d1Query<{ id: string }>(
+      `WITH RECURSIVE reply_tree(id) AS (
+        SELECT id FROM post_replies WHERE id = ?
+        UNION
+        SELECT replies.id FROM post_replies replies JOIN reply_tree parent ON replies.parent_reply_id = parent.id
+      ) SELECT id FROM reply_tree`,
+      [replyId]
+    );
+    if (descendants.length === 0) return false;
     await d1Batch([
       {
-        sql: "DELETE FROM post_replies WHERE id = ? OR parent_reply_id = ?",
-        params: [replyId, replyId],
+        sql: `WITH RECURSIVE reply_tree(id) AS (
+          SELECT id FROM post_replies WHERE id = ?
+          UNION
+          SELECT replies.id FROM post_replies replies JOIN reply_tree parent ON replies.parent_reply_id = parent.id
+        ) DELETE FROM post_likes WHERE target_type = 'reply' AND target_id IN (SELECT id FROM reply_tree)`,
+        params: [replyId],
       },
       {
-        sql: "UPDATE community_posts SET replies_count = MAX(0, replies_count - 1) WHERE id = ?",
-        params: [existing.post_id],
+        sql: `WITH RECURSIVE reply_tree(id) AS (
+          SELECT id FROM post_replies WHERE id = ?
+          UNION
+          SELECT replies.id FROM post_replies replies JOIN reply_tree parent ON replies.parent_reply_id = parent.id
+        ) DELETE FROM post_replies WHERE id IN (SELECT id FROM reply_tree)`,
+        params: [replyId],
+      },
+      {
+        sql: "UPDATE community_posts SET replies_count = MAX(0, replies_count - ?) WHERE id = ?",
+        params: [descendants.length, existing.post_id],
       },
     ]);
     return true;

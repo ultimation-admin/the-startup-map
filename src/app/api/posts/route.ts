@@ -4,20 +4,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { fetchCommunityPosts, createCommunityPost, upsertUserProfile, fetchUserListings } from "@/lib/db";
 import { rankCommunityFeed, FeedTabMode } from "@/lib/feedAlgorithm";
+import { rateLimitRequest } from "@/lib/requestRateLimit";
+import { getEdgeCachedResponse, storeEdgeCachedResponse } from "@/lib/edgeResponseCache";
 
 export async function GET(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    const rateLimitResponse = await rateLimitRequest(req, "PUBLIC_READ_LIMITER", "posts", userId || undefined);
+    if (rateLimitResponse) return rateLimitResponse;
+    const isPublicRequest = !userId;
+    if (isPublicRequest) {
+      const cachedResponse = await getEdgeCachedResponse(req, "public-posts-v1");
+      if (cachedResponse) return cachedResponse;
+    }
+
     const { searchParams } = new URL(req.url);
     const communityId = searchParams.get("community_id") || searchParams.get("communityId") || undefined;
     const cursor = searchParams.get("cursor") || undefined;
-    const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit") as string, 10) : undefined;
+    const requestedLimit = Number.parseInt(searchParams.get("limit") || "20", 10);
+    // Keep public feed requests bounded even when callers provide a negative or
+    // unusually large limit (SQLite treats negative LIMIT values as unlimited).
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(50, Math.max(1, requestedLimit))
+      : 20;
     const tab = (searchParams.get("tab") as FeedTabMode) || undefined;
     const userCity = searchParams.get("city") || undefined;
     const userSector = searchParams.get("sector") || undefined;
     const joined = searchParams.get("joined") ? searchParams.get("joined")!.split(",") : [];
     const interests = searchParams.get("interests") ? searchParams.get("interests")!.split(",") : [];
-
-    let posts = await fetchCommunityPosts({ communityId, cursor, limit });
+    let posts = await fetchCommunityPosts({ communityId, cursor, limit, viewerId: userId || undefined });
 
     if (tab) {
       posts = rankCommunityFeed(posts, tab, {
@@ -28,14 +43,20 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       { posts },
       {
         headers: {
-          "Cache-Control": "no-store, max-age=0",
+          "Cache-Control": isPublicRequest
+            ? "public, max-age=0, s-maxage=10, stale-while-revalidate=30"
+            : "private, no-store",
         },
       }
     );
+    if (isPublicRequest) {
+      await storeEdgeCachedResponse(req, "public-posts-v1", response, 10);
+    }
+    return response;
   } catch (error) {
     console.error("GET /api/posts error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

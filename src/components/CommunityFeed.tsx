@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import {
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
   Community,
   CommunityPost,
-  ECOSYSTEM_COMMUNITIES,
   Listing,
 } from "@/lib/db";
+import { ECOSYSTEM_COMMUNITIES } from "@/lib/db";
 import { rankCommunityFeed } from "@/lib/feedAlgorithm";
+import type { FeedTabMode } from "@/lib/feedAlgorithm";
 import {
   RepostIcon,
   ShareSendIcon,
@@ -18,6 +19,10 @@ import { EmptyFeedState } from "./EmptyFeedState";
 
 import { RedditThreadReplies } from "./RedditThreadReplies";
 import { uploadFileToR2 } from "@/lib/uploadClient";
+
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  return Array.from(new globalThis.Map(items.map((item) => [item.id, item])).values());
+}
 
 function formatTimeAgo(dateString?: string): string {
   if (!dateString) return "";
@@ -42,39 +47,37 @@ function formatTimeAgo(dateString?: string): string {
 
 interface CommunityFeedProps {
   userId: string;
-  userEmail?: string;
   userName?: string;
   userAvatar?: string;
   isSignedIn: boolean;
   userInterests?: string[];
   userJoinedCommunities?: string[];
-  mobileTab?: "feed" | "map";
-  onToggleMobileTab?: (tab: "feed" | "map") => void;
   onRequireAuth: () => void;
   onOpenAddListing?: () => void;
   onSelectAuthorHandle?: (handle: string) => void;
+  initialFeedTab?: FeedTabMode;
+  showFeedModeSelector?: boolean;
 }
 
 export function CommunityFeed({
   userId,
-  userEmail = "founder@startupmap.in",
-  userName = "Founder",
+  userName = "",
   userAvatar,
   isSignedIn,
   userInterests,
   userJoinedCommunities,
-  mobileTab = "feed",
-  onToggleMobileTab,
   onRequireAuth,
   onOpenAddListing,
   onSelectAuthorHandle,
+  initialFeedTab = "for-you",
+  showFeedModeSelector = true,
 }: CommunityFeedProps) {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [communities, setCommunities] = useState<Community[]>(ECOSYSTEM_COMMUNITIES);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [selectedCommunityId, setSelectedCommunityId] = useState<string>("all");
-  const [joinedCommunities, setJoinedCommunities] = useState<string[]>(["startups", "founders", "genai"]);
+  const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
   const [showNoProfileModal, setShowNoProfileModal] = useState(false);
   const [showCreateBox, setShowCreateBox] = useState(false);
   const [userProfileListing, setUserProfileListing] = useState<Listing | null>(null);
@@ -98,14 +101,21 @@ export function CommunityFeed({
 
   // Create post form state
   const [newPostText, setNewPostText] = useState("");
-  const [newPostCommunity, setNewPostCommunity] = useState("startups");
+  const [newPostCommunity, setNewPostCommunity] = useState(ECOSYSTEM_COMMUNITIES[0]?.id || "");
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
+  const imagePreviewUrlRef = useRef<string | null>(null);
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   // Reply state: active post ID being replied to
   const [activeReplyPostId, setActiveReplyPostId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
+  const [loadedRepliesPostIds, setLoadedRepliesPostIds] = useState<Set<string>>(() => new Set());
+  const [replyPageCursors, setReplyPageCursors] = useState<Record<string, string | null>>({});
+  const [replyHasMore, setReplyHasMore] = useState<Record<string, boolean>>({});
+  const [loadingReplyPostIds, setLoadingReplyPostIds] = useState<Set<string>>(() => new Set());
+  const [replyLoadErrors, setReplyLoadErrors] = useState<Record<string, string>>({});
+  const replyRequestsRef = useRef(new Set<string>());
 
   const handleToggleRepost = async (post: CommunityPost) => {
     if (!isSignedIn) {
@@ -174,34 +184,57 @@ export function CommunityFeed({
 
   useEffect(() => {
     if (isSignedIn && userId) {
-      fetch(`/api/listings?owner_id=${encodeURIComponent(userId)}`)
-        .then((res) => res.json())
+      setUserProfileListing(null);
+      const controller = new AbortController();
+      fetch(`/api/listings?owner_id=${encodeURIComponent(userId)}`, { signal: controller.signal })
+        .then((res) => {
+          if (!res.ok) throw new Error("Profile could not be loaded.");
+          return res.json();
+        })
         .then((data) => {
           const listings: Listing[] = Array.isArray(data) ? data : (data.listings || []);
           if (listings.length > 0) {
             setUserProfileListing(listings[0]);
           }
         })
-        .catch((err) => console.error("Failed to load profile listing for composer:", err));
+        .catch((err) => {
+          if (!(err instanceof DOMException && err.name === "AbortError")) console.error("Failed to load profile listing for composer:", err);
+        });
+      return () => controller.abort();
     }
   }, [isSignedIn, userId]);
 
-  const loadFeed = async (isInitial = false) => {
+  useEffect(() => () => {
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+  }, []);
+
+  const loadFeed = useCallback(async (isInitial = false, signal?: AbortSignal) => {
     if (isInitial) setLoadingPosts(true);
     setFeedError(null);
     try {
-      const res = await fetch(selectedCommunityId === "all" ? '/api/posts' : `/api/posts?community_id=${selectedCommunityId}`);
+      const params = new URLSearchParams({ limit: initialFeedTab === "trending" ? "50" : "20" });
+      if (selectedCommunityId !== "all") params.set("community_id", selectedCommunityId);
+      const url = `/api/posts?${params.toString()}`;
+      const res = await fetch(url, { signal });
       if (!res.ok) throw new Error("Feed could not be loaded.");
       const data = await res.json();
       const active = Array.isArray(data) ? data : (data.posts || []);
-      setPosts(active);
+      if (signal?.aborted) return;
+      setPosts((current) => {
+        const currentById = new Map(current.map((post) => [post.id, post]));
+        return uniqueById(active.map((post: CommunityPost) => ({
+          ...post,
+          replies: currentById.get(post.id)?.replies || [],
+        })));
+      });
     } catch (err) {
+      if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
       console.error(err);
       setFeedError("We couldn't load the feed.");
     } finally {
-      if (isInitial) setLoadingPosts(false);
+      if (isInitial && !signal?.aborted) setLoadingPosts(false);
     }
-  };
+  }, [initialFeedTab, selectedCommunityId]);
 
   useEffect(() => {
     if (loadingPosts || posts.length === 0 || typeof window === "undefined") return;
@@ -211,28 +244,64 @@ export function CommunityFeed({
   }, [loadingPosts, posts]);
 
   useEffect(() => {
-    loadFeed(true);
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && !document.hidden) {
-        loadFeed(false);
-      }
-    }, 60000);
-
-    const handleFocus = () => {
-      loadFeed(false);
+    const controller = new AbortController();
+    void loadFeed(true, controller.signal);
+    let lastRefresh = Date.now();
+    const refreshWhenActive = () => {
+      if (document.hidden || Date.now() - lastRefresh < 30000) return;
+      lastRefresh = Date.now();
+      void loadFeed(false, controller.signal);
     };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", handleFocus);
-    }
+    window.addEventListener("focus", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     return () => {
-      clearInterval(interval);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", handleFocus);
-      }
+      window.removeEventListener("focus", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+      controller.abort();
     };
-  }, [selectedCommunityId]);
+  }, [loadFeed]);
+
+  const loadPostReplies = async (postId: string, cursor?: string | null) => {
+    if (replyRequestsRef.current.has(postId)) return;
+    replyRequestsRef.current.add(postId);
+    setLoadingReplyPostIds((current) => new Set(current).add(postId));
+    setReplyLoadErrors((current) => ({ ...current, [postId]: "" }));
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/replies?${params.toString()}`);
+      if (!response.ok) throw new Error("Replies could not be loaded.");
+      const data = await response.json();
+      const incomingReplies = Array.isArray(data.replies) ? data.replies : [];
+      setPosts((current) => current.map((post) => post.id === postId
+        ? { ...post, replies: uniqueById(cursor ? [...(post.replies || []), ...incomingReplies] : incomingReplies) }
+        : post));
+      setReplyLoadErrors((current) => ({ ...current, [postId]: "" }));
+      setLoadedRepliesPostIds((current) => new Set(current).add(postId));
+      setReplyPageCursors((current) => ({ ...current, [postId]: data.next_cursor || null }));
+      setReplyHasMore((current) => ({ ...current, [postId]: Boolean(data.has_more) }));
+    } catch (error) {
+      console.error("Failed to load post replies:", error);
+      setReplyLoadErrors((current) => ({ ...current, [postId]: "Replies could not be loaded. Try again." }));
+    } finally {
+      replyRequestsRef.current.delete(postId);
+      setLoadingReplyPostIds((current) => {
+        const next = new Set(current);
+        next.delete(postId);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleReplySection = (postId: string, isOpen: boolean) => {
+    if (isOpen) {
+      setActiveReplyPostId(null);
+      return;
+    }
+    setActiveReplyPostId(postId);
+    if (!loadedRepliesPostIds.has(postId)) void loadPostReplies(postId);
+  };
 
   const toggleJoinCommunity = (communityId: string) => {
     if (!isSignedIn) {
@@ -249,24 +318,52 @@ export function CommunityFeed({
     }
   };
 
+  const handleDropdownKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+    const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role^='menuitem']:not(:disabled)"));
+    if (!menuItems.length) return;
+    event.preventDefault();
+    const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+    const targetIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? menuItems.length - 1
+        : currentIndex < 0
+          ? 0
+          : (currentIndex + (event.key === "ArrowDown" ? 1 : -1) + menuItems.length) % menuItems.length;
+    menuItems[targetIndex]?.focus();
+  };
+
   // Local File Selection Handler (Zero network calls while editing/changing)
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"].includes(file.type.toLowerCase())) {
+      setActionError("Choose a JPEG, PNG, WebP, or GIF image.");
+      e.target.value = "";
+      return;
+    }
     if (file.size > 10 * 1024 * 1024) {
-      alert("Image file size exceeds 10MB!");
+      setActionError("Choose an image smaller than 10 MB.");
+      e.target.value = "";
       return;
     }
 
+    setActionError(null);
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
     setSelectedImageFile(file);
     const previewUrl = URL.createObjectURL(file);
+    imagePreviewUrlRef.current = previewUrl;
     setImagePreviewUrl(previewUrl);
   };
 
   const handleRemoveImage = () => {
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+    imagePreviewUrlRef.current = null;
     setSelectedImageFile(null);
     setImagePreviewUrl("");
+    if (imageFileInputRef.current) imageFileInputRef.current.value = "";
   };
 
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -278,10 +375,11 @@ export function CommunityFeed({
     }
 
     if (!newPostText.trim()) {
-      alert("Please write something to post.");
+      setActionError("Write something before posting.");
       return;
     }
 
+    setActionError(null);
     setIsUploadingImage(true);
     let finalR2ImageUrl = "";
 
@@ -292,12 +390,15 @@ export function CommunityFeed({
         finalR2ImageUrl = uploadResult.url || "";
       } catch (err) {
         console.warn("R2 upload error during post submission:", err);
+        setActionError(err instanceof Error ? err.message : "Image upload failed. Please try again.");
+        setIsUploadingImage(false);
+        return;
       }
     } else if (imagePreviewUrl && !imagePreviewUrl.startsWith("data:")) {
       finalR2ImageUrl = imagePreviewUrl;
     }
 
-    const targetCommunity = ECOSYSTEM_COMMUNITIES.find((c) => c.id === newPostCommunity);
+    const targetCommunity = communities.find((c) => c.id === newPostCommunity) || ECOSYSTEM_COMMUNITIES.find((c) => c.id === newPostCommunity);
 
     const newPostData = {
       community_id: newPostCommunity,
@@ -319,22 +420,22 @@ export function CommunityFeed({
       });
       if (res.ok) {
         const data = await res.json();
-        setPosts([data.post || data, ...posts]);
+        setPosts((current) => uniqueById([data.post || data, ...current]));
         setNewPostText("");
         setSelectedImageFile(null);
-        setImagePreviewUrl("");
+        handleRemoveImage();
         setShowCreateBox(false);
       } else {
         const errData = await res.json().catch(() => ({}));
         if (res.status === 403 || errData.error === "NO_PROFILE_CREATED") {
           setShowNoProfileModal(true);
         } else {
-          alert(errData.message || errData.error || "Failed to create post.");
+          setActionError(errData.message || errData.error || "Failed to create post.");
         }
       }
     } catch (err) {
       console.error(err);
-      alert("Failed to create post.");
+      setActionError(err instanceof Error ? err.message : "Failed to create post.");
     } finally {
       setIsUploadingImage(false);
     }
@@ -353,7 +454,11 @@ export function CommunityFeed({
       const likedBy = liked
         ? post.liked_by.filter((id) => id !== userId)
         : [...post.liked_by, userId];
-      return { ...post, liked_by: likedBy, likes_count: likedBy.length };
+      return {
+        ...post,
+        liked_by: likedBy,
+        likes_count: Math.max(0, post.likes_count + (liked ? -1 : 1)),
+      };
     });
     setPosts(updated);
 
@@ -403,30 +508,31 @@ export function CommunityFeed({
       if (res.ok) {
         const data = await res.json();
         const createdReply = data.reply || data;
-        const updated = posts.map((p) => {
+        setPosts((current) => current.map((p) => {
           if (p.id === postId) {
             const currentReplies = p.replies || [];
+            const nextReplies = uniqueById([...currentReplies, createdReply]);
             return {
               ...p,
-              replies: [...currentReplies, createdReply],
-              replies_count: Math.max((p.replies_count || 0) + 1, currentReplies.length + 1),
+              replies: nextReplies,
+              replies_count: Math.max((p.replies_count || 0) + 1, nextReplies.length),
             };
           }
           return p;
-        });
-        setPosts(updated);
+        }));
         return true;
       } else {
         const errData = await res.json().catch(() => ({}));
         if (res.status === 403 && errData.error === "NO_PROFILE_CREATED") {
           setShowNoProfileModal(true);
         } else {
-          alert(errData.message || errData.error || "Failed to add reply.");
+          setActionError(errData.message || errData.error || "Failed to add reply.");
         }
         return false;
       }
     } catch (err) {
       console.error(err);
+      setActionError(err instanceof Error ? err.message : "Failed to add reply.");
       return false;
     }
   };
@@ -448,13 +554,28 @@ export function CommunityFeed({
           prev.map((p) => {
             if (p.id === postId) {
               const current = p.replies || [];
-              const filtered = current.filter(
-                (r) => r.id !== replyId && r.parent_reply_id !== replyId
-              );
+              const removedIds = new Set([replyId]);
+              const childrenByParent = new Map<string, string[]>();
+              for (const reply of current) {
+                if (!reply.parent_reply_id) continue;
+                const children = childrenByParent.get(reply.parent_reply_id) || [];
+                children.push(reply.id);
+                childrenByParent.set(reply.parent_reply_id, children);
+              }
+              const pending = [replyId];
+              while (pending.length) {
+                const parentId = pending.pop()!;
+                for (const childId of childrenByParent.get(parentId) || []) {
+                  if (removedIds.has(childId)) continue;
+                  removedIds.add(childId);
+                  pending.push(childId);
+                }
+              }
+              const filtered = current.filter((reply) => !removedIds.has(reply.id));
               return {
                 ...p,
                 replies: filtered,
-                replies_count: Math.max(0, (p.replies_count || current.length) - 1),
+                replies_count: Math.max(0, (p.replies_count || current.length) - removedIds.size),
               };
             }
             return p;
@@ -463,11 +584,12 @@ export function CommunityFeed({
         return true;
       } else {
         const errData = await res.json().catch(() => ({}));
-        alert(errData.message || errData.error || "Failed to delete reply.");
+        setActionError(errData.message || errData.error || "Failed to delete reply.");
         return false;
       }
     } catch (err) {
       console.error("Failed to delete reply:", err);
+      setActionError(err instanceof Error ? err.message : "Failed to delete reply.");
       return false;
     }
   };
@@ -486,17 +608,17 @@ export function CommunityFeed({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to delete post");
+        setActionError(data.error || "Failed to delete post.");
         loadFeed();
       }
     } catch (err) {
       console.error("Error deleting post:", err);
-      alert("Failed to delete post. Please try again.");
+      setActionError("Failed to delete post. Please try again.");
       loadFeed();
     }
   };
 
-  const [feedTab, setFeedTab] = useState<"for-you" | "latest" | "joined">("for-you");
+  const [feedTab, setFeedTab] = useState<FeedTabMode>(initialFeedTab);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [showForYouDropdown, setShowForYouDropdown] = useState(false);
   const [showJoinedDropdown, setShowJoinedDropdown] = useState(false);
@@ -512,20 +634,36 @@ export function CommunityFeed({
     };
 
     if (typeof window !== "undefined") {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("pointerdown", handleClickOutside);
     }
     return () => {
       if (typeof window !== "undefined") {
-        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("pointerdown", handleClickOutside);
       }
     };
   }, []);
 
+  useEffect(() => {
+    const closeMenusOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setShowForYouDropdown(false);
+      setShowJoinedDropdown(false);
+    };
+    document.addEventListener("keydown", closeMenusOnEscape);
+    return () => document.removeEventListener("keydown", closeMenusOnEscape);
+  }, []);
+
+  const userInterestsKey = JSON.stringify(userInterests ?? null);
+  const userJoinedCommunitiesKey = JSON.stringify(userJoinedCommunities ?? null);
+
   // Sync setup info (interests & joined communities) from localStorage / props
   useEffect(() => {
     if (typeof window !== "undefined" && userId) {
-      if (userInterests && userInterests.length > 0) {
-        setSelectedInterests(userInterests);
+      setJoinedCommunities([]);
+      const propInterests = JSON.parse(userInterestsKey) as string[] | null;
+      const propJoinedCommunities = JSON.parse(userJoinedCommunitiesKey) as string[] | null;
+      if (propInterests && propInterests.length > 0) {
+        setSelectedInterests(propInterests);
       } else {
         const savedInterests = localStorage.getItem(`startupmap_interests_${userId}`);
         if (savedInterests) {
@@ -538,8 +676,8 @@ export function CommunityFeed({
         }
       }
 
-      if (Array.isArray(userJoinedCommunities)) {
-        setJoinedCommunities(userJoinedCommunities);
+      if (Array.isArray(propJoinedCommunities)) {
+        setJoinedCommunities(propJoinedCommunities);
       } else {
         const savedCommunities = localStorage.getItem(`startupmap_communities_${userId}`);
         if (savedCommunities) {
@@ -549,22 +687,13 @@ export function CommunityFeed({
           } catch {}
         }
       }
+    } else {
+      setJoinedCommunities([]);
+      setSelectedInterests([]);
     }
-  }, [userId, JSON.stringify(userInterests), JSON.stringify(userJoinedCommunities)]);
+  }, [userId, userInterestsKey, userJoinedCommunitiesKey]);
 
-  const toggleInterest = (topicId: string) => {
-    setSelectedInterests((prev) => {
-      const next = prev.includes(topicId)
-        ? prev.filter((id) => id !== topicId)
-        : [...prev, topicId];
-      if (typeof window !== "undefined" && userId) {
-        localStorage.setItem(`startupmap_interests_${userId}`, JSON.stringify(next));
-      }
-      return next;
-    });
-  };
-
-  const getFilteredAndSortedPosts = () => {
+  const filteredPosts = useMemo(() => {
     let sourcePosts = [...posts];
 
     if (selectedCommunityId !== "all") {
@@ -578,53 +707,31 @@ export function CommunityFeed({
       joinedCommunities,
       selectedInterests,
     });
-  };
-
-  const filteredPosts = getFilteredAndSortedPosts();
+  }, [feedTab, joinedCommunities, posts, selectedCommunityId, selectedInterests, userId, userProfileListing?.city, userProfileListing?.sector]);
 
   return (
     <div className="community-feed-wrapper">
-
+      {initialFeedTab === "trending" && (
+        <header className="feed-section-heading">
+          <p className="eyebrow">WHAT THE COMMUNITY IS TALKING ABOUT</p>
+          <h1>Trending</h1>
+          <p>Popular conversations across the startup community.</p>
+        </header>
+      )}
       
       {/* 1. FIXED STICKY TOP SECTION FOR DISCOVERY TABS */}
       <div ref={feedTopNavRef} className="feed-top-section-fixed">
         <div className="feed-top-action-bar">
           <div className="feed-nav-tabs twitter-nav-tabs">
-            {/* INLINE FEED / MAP MODE TOGGLE ON FAR LEFT CORNER OF SECTION BAR (MOBILE ONLY) */}
-            <div className="inline-section-mode-toggle mobile-only">
-              <button
-                type="button"
-                className={`mode-toggle-btn ${mobileTab === "feed" ? "active" : ""}`}
-                onClick={() => onToggleMobileTab?.("feed")}
-                title="Feed View"
-                aria-label="Feed View"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 11a9 9 0 0 1 9 9" />
-                  <path d="M4 4a16 16 0 0 1 16 16" />
-                  <circle cx="5" cy="19" r="1" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className={`mode-toggle-btn ${mobileTab === "map" ? "active" : ""}`}
-                onClick={() => onToggleMobileTab?.("map")}
-                title="Map View"
-                aria-label="Map View"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-                  <line x1="9" y1="3" x2="9" y2="18" />
-                  <line x1="15" y1="6" x2="15" y2="21" />
-                </svg>
-              </button>
-            </div>
-
             {/* 1. FOR YOU / LATEST TAB (WITH SORTING DROPDOWN) */}
+            {showFeedModeSelector && <>
             <div className="nav-tab-dropdown-wrap">
               <button
                 type="button"
                 className={`feed-nav-tab twitter-tab ${feedTab === "for-you" || feedTab === "latest" ? "active" : ""}`}
+                aria-haspopup="menu"
+                aria-expanded={showForYouDropdown}
+                aria-controls="feed-sort-menu"
                 onClick={() => {
                   if (feedTab !== "for-you" && feedTab !== "latest") {
                     setFeedTab("for-you");
@@ -638,11 +745,7 @@ export function CommunityFeed({
                   <span
                     className={`feed-chevron-arrow ${showForYouDropdown ? "open" : ""}`}
                     title="Change Feed Sorting"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowForYouDropdown((prev) => !prev);
-                      setShowJoinedDropdown(false);
-                    }}
+                    aria-hidden="true"
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m6 9 6 6 6-6" />
@@ -653,10 +756,12 @@ export function CommunityFeed({
               </button>
 
               {showForYouDropdown && (
-                <div className="tab-dropdown-menu compact">
+                <div id="feed-sort-menu" className="tab-dropdown-menu compact" role="menu" aria-label="Feed order" onKeyDown={handleDropdownKeyDown}>
                   <button
                     type="button"
                     className={`dropdown-item ${feedTab === "for-you" ? "selected" : ""}`}
+                    role="menuitemradio"
+                    aria-checked={feedTab === "for-you"}
                     onClick={() => {
                       setFeedTab("for-you");
                       setShowForYouDropdown(false);
@@ -669,6 +774,8 @@ export function CommunityFeed({
                   <button
                     type="button"
                     className={`dropdown-item ${feedTab === "latest" ? "selected" : ""}`}
+                    role="menuitemradio"
+                    aria-checked={feedTab === "latest"}
                     onClick={() => {
                       setFeedTab("latest");
                       setShowForYouDropdown(false);
@@ -686,9 +793,13 @@ export function CommunityFeed({
               <button
                 type="button"
                 className={`feed-nav-tab twitter-tab ${feedTab === "joined" ? "active" : ""}`}
+                aria-haspopup="menu"
+                aria-expanded={showJoinedDropdown}
+                aria-controls="joined-community-menu"
                 onClick={() => {
                   setFeedTab("joined");
-                  setShowJoinedDropdown(false);
+                  setShowForYouDropdown(false);
+                  setShowJoinedDropdown((open) => !open);
                 }}
               >
                 <span className="tab-label-text">
@@ -699,11 +810,7 @@ export function CommunityFeed({
                   <span
                     className={`feed-chevron-arrow ${showJoinedDropdown ? "open" : ""}`}
                     title="Manage Communities"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFeedTab("joined");
-                      setShowJoinedDropdown(!showJoinedDropdown);
-                    }}
+                    aria-hidden="true"
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="m6 9 6 6 6-6" />
@@ -714,7 +821,7 @@ export function CommunityFeed({
               </button>
 
               {showJoinedDropdown && (
-                <div className="tab-dropdown-menu">
+                <div id="joined-community-menu" className="tab-dropdown-menu" role="menu" aria-label="Communities" onKeyDown={handleDropdownKeyDown}>
                   {(() => {
                     const availableList = communities.length > 0 ? communities : ECOSYSTEM_COMMUNITIES;
                     const joinedList = availableList.filter((c) => joinedCommunities.includes(c.id));
@@ -726,25 +833,20 @@ export function CommunityFeed({
                           joinedList.map((c) => {
                             const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
                             return (
-                              <div
-                                key={c.id}
-                                className="dropdown-community-row"
-                                onClick={() => {
+                              <div key={c.id} className="dropdown-community-row">
+                                <button type="button" className="community-info" role="menuitem" onClick={() => {
                                   setSelectedCommunityId(c.id);
                                   setFeedTab("joined");
                                   setShowJoinedDropdown(false);
-                                }}
-                              >
-                                <div className="community-info">
+                                }}>
                                   <b>{formattedName}</b>
-                                </div>
+                                </button>
                                 <button
                                   type="button"
                                   className="join-toggle-btn joined"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleJoinCommunity(c.id);
-                                  }}
+                                  role="menuitemcheckbox"
+                                  aria-checked="true"
+                                  onClick={() => toggleJoinCommunity(c.id)}
                                 >
                                   Joined
                                 </button>
@@ -759,25 +861,20 @@ export function CommunityFeed({
                             {unjoinedList.map((c) => {
                               const formattedName = c.name.startsWith("/") ? c.name : `/${c.name}`;
                               return (
-                                <div
-                                  key={c.id}
-                                  className="dropdown-community-row"
-                                  onClick={() => {
+                                <div key={c.id} className="dropdown-community-row">
+                                  <button type="button" className="community-info" role="menuitem" onClick={() => {
                                     setSelectedCommunityId(c.id);
                                     setFeedTab("joined");
                                     setShowJoinedDropdown(false);
-                                  }}
-                                >
-                                  <div className="community-info">
+                                  }}>
                                     <b>{formattedName}</b>
-                                  </div>
+                                  </button>
                                   <button
                                     type="button"
                                     className="join-toggle-btn"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleJoinCommunity(c.id);
-                                    }}
+                                    role="menuitemcheckbox"
+                                    aria-checked="false"
+                                    onClick={() => toggleJoinCommunity(c.id)}
                                   >
                                     + Join
                                   </button>
@@ -792,6 +889,7 @@ export function CommunityFeed({
                 </div>
               )}
             </div>
+            </>}
           </div>
 
           <div className="feed-header-actions-row">
@@ -812,11 +910,18 @@ export function CommunityFeed({
         </div>
       </div>
 
+      {(actionError || shareFeedback) && (
+        <div className={`feed-action-feedback ${actionError ? "is-error" : ""}`} role={actionError ? "alert" : "status"}>
+          <span>{actionError || shareFeedback}</span>
+          {actionError && <button type="button" onClick={() => setActionError(null)} aria-label="Dismiss message">Dismiss</button>}
+        </div>
+      )}
+
       {/* 2. STREAM COMPOSER (INLINE STREAM CARD MATCHING THREADS DESKTOP) */}
       {showCreateBox ? (
         <form onSubmit={handleCreatePost} className="create-post-composer">
           <div className="composer-row">
-            <div className="composer-avatar" style={{ background: userProfileListing?.color || "#f85900", borderRadius: "50%" }}>
+            <div className="composer-avatar" style={{ background: userProfileListing?.color || "#000000", borderRadius: "50%" }}>
               {userProfileListing?.logo_url ? (
                 <img src={userProfileListing.logo_url} alt={userProfileListing.name} />
               ) : userProfileListing?.initials ? (
@@ -858,6 +963,7 @@ export function CommunityFeed({
                 autoFocus
                 rows={3}
                 maxLength={500}
+                disabled={isUploadingImage}
                 aria-label="Write your post"
                 placeholder="What's happening in your startup journey?"
                 value={newPostText}
@@ -868,7 +974,7 @@ export function CommunityFeed({
               {imagePreviewUrl && (
                 <div className="composer-image-preview-wrap">
                   <img src={imagePreviewUrl} alt="Attachment" className="composer-image-preview" />
-                  <button type="button" className="remove-composer-img-btn" onClick={handleRemoveImage}>
+                  <button type="button" className="remove-composer-img-btn" disabled={isUploadingImage} onClick={handleRemoveImage}>
                     ✕
                   </button>
                 </div>
@@ -889,8 +995,10 @@ export function CommunityFeed({
                   >
                     <span className="composer-photo-label">Photo</span>
                     <input
+                      ref={imageFileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      disabled={isUploadingImage}
                       onChange={handleImageSelect}
                       className="composer-file-input"
                     />
@@ -902,6 +1010,7 @@ export function CommunityFeed({
                   <button
                     type="button"
                     className="composer-discard-btn"
+                    disabled={isUploadingImage}
                     onClick={() => {
                       setNewPostText("");
                       handleRemoveImage();
@@ -929,7 +1038,7 @@ export function CommunityFeed({
             }
           }}
         >
-          <div className="stream-composer-avatar" style={{ background: userProfileListing?.color || "#f85900", borderRadius: "50%" }}>
+          <div className="stream-composer-avatar" style={{ background: userProfileListing?.color || "#000000", borderRadius: "50%" }}>
             {userProfileListing?.logo_url ? (
               <img src={userProfileListing.logo_url} alt={userProfileListing.name} />
             ) : userProfileListing?.initials ? (
@@ -1068,7 +1177,7 @@ export function CommunityFeed({
                           title="Delete post"
                           onClick={() => handleDeletePost(post.id)}
                         >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#000000" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6" />
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                             <line x1="10" y1="11" x2="10" y2="17" />
@@ -1112,7 +1221,7 @@ export function CommunityFeed({
                         title="Like"
                         aria-label="Like"
                       >
-                        <svg viewBox="0 0 24 24" className="action-icon" fill={isLiked ? "#ef4444" : "none"} stroke={isLiked ? "#ef4444" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <svg viewBox="0 0 24 24" className="action-icon" fill={isLiked ? "#000000" : "none"} stroke={isLiked ? "#000000" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                         </svg>
                         {post.likes_count > 0 && <span className="action-count">{post.likes_count}</span>}
@@ -1121,7 +1230,7 @@ export function CommunityFeed({
                       <button
                         type="button"
                         className={`post-action-btn comment-action ${isReplying ? "active" : ""}`}
-                        onClick={() => setActiveReplyPostId(isReplying ? null : post.id)}
+                        onClick={() => handleToggleReplySection(post.id, isReplying)}
                         title="Comment"
                         aria-label="Comment"
                       >
@@ -1139,7 +1248,7 @@ export function CommunityFeed({
                         onClick={() => handleToggleRepost(post)}
                         title={isReposted ? "Undo repost" : "Repost"}
                         aria-label={isReposted ? "Undo repost" : "Repost"}
-                        style={{ color: isReposted ? "#10b981" : "inherit" }}
+                        style={{ color: isReposted ? "#757575" : "inherit" }}
                       >
                         <RepostIcon size={19} className="action-icon" />
                         {post.reposts_count > 0 && <span className="action-count">{post.reposts_count}</span>}
@@ -1168,10 +1277,14 @@ export function CommunityFeed({
                     userAvatar={userAvatar}
                     userProfileListing={userProfileListing}
                     onRequireAuth={onRequireAuth}
-                    onShowNoProfileModal={() => setShowNoProfileModal(true)}
                     onSelectAuthorHandle={onSelectAuthorHandle}
                     onAddReply={handleAddReply}
                     onDeleteReply={handleDeleteReply}
+                    isLoadingReplies={loadingReplyPostIds.has(post.id)}
+                    replyLoadError={replyLoadErrors[post.id]}
+                    onRetryLoadReplies={() => void loadPostReplies(post.id, replyPageCursors[post.id])}
+                    hasMoreReplies={Boolean(replyHasMore[post.id])}
+                    onLoadMoreReplies={() => void loadPostReplies(post.id, replyPageCursors[post.id])}
                   />
                 )}
               </div>
@@ -1184,7 +1297,7 @@ export function CommunityFeed({
       {showNoProfileModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
           <div style={{ background: "#ffffff", borderRadius: "16px", padding: "28px 24px", maxWidth: "420px", width: "100%", textAlign: "center", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)" }}>
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", fontWeight: 800, color: "#111827" }}>Map Profile Required</h3>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", fontWeight: 800, color: "#000000" }}>Map Profile Required</h3>
             <p style={{ color: "#4b5563", fontSize: "14px", lineHeight: "1.5", margin: "0 0 24px 0" }}>
               To post, reply, or interact in the community, you need to create your official map profile (either as <b>p/YourName</b> or <b>s/StartupName</b>) pinned on the map!
             </p>
@@ -1202,7 +1315,7 @@ export function CommunityFeed({
                   setShowNoProfileModal(false);
                   onOpenAddListing?.();
                 }}
-                style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: "#f85900", color: "#ffffff", fontWeight: 700, cursor: "pointer", fontSize: "14px" }}
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: "#000000", color: "#ffffff", fontWeight: 700, cursor: "pointer", fontSize: "14px" }}
               >
                 + Create Map Profile
               </button>

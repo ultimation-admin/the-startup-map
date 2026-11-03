@@ -1,5 +1,5 @@
 import { MetadataRoute } from "next";
-import { fetchListings } from "@/lib/db";
+import { fetchListings, type Listing } from "@/lib/db";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://thestartupmap.com";
@@ -29,7 +29,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic routes for startup and person listings
   let dynamicRoutes: MetadataRoute.Sitemap = [];
   try {
-    const listings = await fetchListings();
+    const listings: Listing[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await fetchListings({ cursor, limit: 500 });
+      listings.push(...page.listings);
+      cursor = page.nextCursor || undefined;
+    } while (cursor && listings.length < 50000);
+
     dynamicRoutes = listings.map((listing) => {
       const routePrefix = listing.type === "person" ? "p" : "s";
       return {

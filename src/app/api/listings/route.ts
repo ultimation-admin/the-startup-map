@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { fetchListings, fetchUserListings, createListing, upsertUserProfile, isAdminUser } from "@/lib/db";
 import { maskPhoneNumber } from "@/lib/security";
+import { rateLimitRequest } from "@/lib/requestRateLimit";
+import { getEdgeCachedResponse, storeEdgeCachedResponse } from "@/lib/edgeResponseCache";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,20 +15,13 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type") || undefined;
     const sector = searchParams.get("sector") || undefined;
     const stage = searchParams.get("stage") || undefined;
-
-    let listings = ownerId ? await fetchUserListings(ownerId) : await fetchListings();
-    if (city) {
-      listings = listings.filter((l) => l.city.toLowerCase() === city.toLowerCase());
-    }
-    if (type) {
-      listings = listings.filter((l) => l.type === type);
-    }
-    if (sector) {
-      listings = listings.filter((l) => l.sector.toLowerCase() === sector.toLowerCase());
-    }
-    if (stage) {
-      listings = listings.filter((l) => l.stage?.toLowerCase() === stage.toLowerCase());
-    }
+    const role = searchParams.get("role") || undefined;
+    const vcStage = searchParams.get("vc_stage") || undefined;
+    const vcType = searchParams.get("vc_type") || undefined;
+    const query = searchParams.get("q") || undefined;
+    const cursor = searchParams.get("cursor") || undefined;
+    const requestedLimit = Number.parseInt(searchParams.get("limit") || "250", 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(500, Math.max(1, requestedLimit)) : 250;
 
     let userId: string | null = null;
     try {
@@ -34,7 +29,20 @@ export async function GET(req: NextRequest) {
       userId = authObj.userId;
     } catch {}
 
+    const rateLimitResponse = await rateLimitRequest(req, "PUBLIC_READ_LIMITER", "listings", userId || undefined);
+    if (rateLimitResponse) return rateLimitResponse;
+
+    const isPublicRequest = !ownerId && !userId;
+    if (isPublicRequest) {
+      const cachedResponse = await getEdgeCachedResponse(req, "public-listings-v1");
+      if (cachedResponse) return cachedResponse;
+    }
+
     const isAdmin = userId ? await isAdminUser(userId) : false;
+    const listingPage = ownerId
+      ? { listings: await fetchUserListings(ownerId), hasMore: false, nextCursor: null }
+      : await fetchListings({ city, type, sector, stage, role, vcStage, vcType, query, cursor, limit });
+    const listings = listingPage.listings;
 
     const sanitizedListings = listings.map((l) => {
       const isOwner = Boolean(userId && userId === l.owner_id);
@@ -47,14 +55,24 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json(
-      { listings: sanitizedListings },
+    const response = NextResponse.json(
+      {
+        listings: sanitizedListings,
+        has_more: listingPage.hasMore,
+        next_cursor: listingPage.nextCursor,
+      },
       {
         headers: {
-          "Cache-Control": "no-store, max-age=0",
+      "Cache-Control": ownerId || userId || isAdmin
+        ? "private, no-store"
+        : "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
         },
       }
     );
+    if (isPublicRequest) {
+      await storeEdgeCachedResponse(req, "public-listings-v1", response, 60);
+    }
+    return response;
 
   } catch (error) {
     console.error("GET /api/listings error:", error);

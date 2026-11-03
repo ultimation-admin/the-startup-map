@@ -1,13 +1,5 @@
-import { redirect } from "next/navigation";
+import { AppTabPage } from "@/components/AppTabPage";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const params = await searchParams;
-  const q = params?.q ? `?q=${encodeURIComponent(params.q)}` : "";
-  redirect(`/explore${q}`);
-}
+export default function Page() { return <AppTabPage tab="search" />; }

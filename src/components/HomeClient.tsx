@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { Listing, fetchListings } from "@/lib/db";
+import type { Listing } from "@/lib/db";
 import { getPublicMediaUrl, getFaviconMimeType } from "@/lib/r2";
 
 const Map = dynamic(
@@ -24,7 +24,7 @@ import { DedicatedProfileStudio } from "@/components/DedicatedProfileStudio";
 import { SpotlightsBar } from "@/components/SpotlightsBar";
 import { InlineSpotlightStoryPlayer } from "@/components/InlineSpotlightStoryPlayer";
 import { CommunityFeed } from "@/components/CommunityFeed";
-import { SearchPage } from "@/components/SearchPage";
+import { SearchPage, type ExploreCategory } from "@/components/SearchPage";
 import { ActivityPage } from "@/components/ActivityPage";
 import { SpotlightStory } from "@/lib/spotlights";
 import { JobPostingsModal } from "@/components/JobPostingsModal";
@@ -56,6 +56,76 @@ import {
   VC_TYPE_OPTIONS,
 } from "@/components/FilterDropdowns";
 
+function buildListingFilterParams(filters: {
+  city?: string;
+  type?: string;
+  stage?: string;
+  sector?: string;
+  role?: string;
+  vcStage?: string;
+  vcType?: string;
+  query?: string;
+}) {
+  const params = new URLSearchParams();
+  const values: Array<[string, string | undefined]> = [
+    ["city", filters.city],
+    ["type", filters.type],
+    ["stage", filters.stage],
+    ["sector", filters.sector],
+    ["role", filters.role],
+    ["vc_stage", filters.vcStage],
+    ["vc_type", filters.vcType],
+    ["q", filters.query],
+  ];
+  for (const [key, value] of values) {
+    if (value && !value.startsWith("All ") && value !== "All Cities") params.set(key, value);
+  }
+  return params;
+}
+
+async function fetchListingPages(
+  filters: URLSearchParams,
+  signal?: AbortSignal,
+  onPage?: (items: Listing[]) => void
+): Promise<Listing[]> {
+  const allListings: Listing[] = [];
+  const seenListingIds = new Set<string>();
+  let cursor: string | null = null;
+  let pagesFetched = 0;
+
+  do {
+    if (signal?.aborted) throw new DOMException("Request was cancelled.", "AbortError");
+    const params = new URLSearchParams(filters);
+    params.set("limit", "250");
+    if (cursor) params.set("cursor", cursor);
+    const response = await fetch(`/api/listings?${params.toString()}`, {
+      signal,
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Listings could not be loaded.");
+    const data = await response.json();
+    if (signal?.aborted) throw new DOMException("Request was cancelled.", "AbortError");
+    const page: Listing[] = Array.isArray(data) ? data : (data.listings || []);
+    const uniquePage = page.filter((listing) => {
+      if (seenListingIds.has(listing.id)) return false;
+      seenListingIds.add(listing.id);
+      return true;
+    });
+    allListings.push(...uniquePage);
+    onPage?.(uniquePage);
+    cursor = data.next_cursor || null;
+    pagesFetched += 1;
+  } while (cursor && pagesFetched < 100);
+
+  return allListings;
+}
+
+function mergeListingsById(current: Listing[], incoming: Listing[]): Listing[] {
+  const listingsById = new globalThis.Map(current.map((listing) => [listing.id, listing]));
+  for (const listing of incoming) listingsById.set(listing.id, listing);
+  return Array.from(listingsById.values());
+}
+
 const clerkInlineAppearance = {
   elements: {
     rootBox: "w-full",
@@ -69,22 +139,22 @@ const clerkInlineAppearance = {
     formFieldRow: "mb-1.5",
     formField: "mb-1.5",
     formFieldLabelRow: "block mb-0.5",
-    formFieldLabel: "text-[11.5px] font-semibold text-[#5B6368] normal-case block mb-0.5",
+    formFieldLabel: "text-[11.5px] font-semibold text-[#757575] normal-case block mb-0.5",
     formFieldInput:
-      "rounded-[10px] border border-transparent bg-[#F0F2F5] focus:bg-white focus:border-[#f85900] focus:ring-2 focus:ring-[#f85900]/25 text-[13px] px-3 text-black font-medium transition-all duration-100 placeholder:text-[#666666] h-[38px]",
+      "rounded-[10px] border border-transparent bg-[#E3E3E3] focus:bg-white focus:border-[#000000] focus:ring-2 focus:ring-[#000000]/25 text-[13px] px-3 text-black font-medium transition-all duration-100 placeholder:text-[#757575] h-[38px]",
     formButtonPrimary:
-      "bg-[#f85900] hover:bg-[#e04f00] text-white font-semibold rounded-full h-[38px] text-[13.5px] normal-case shadow-none transition-all duration-100 hover:scale-[1.01] active:scale-[0.98] mt-1",
+    "bg-[#f85900] hover:bg-[#e04f00] text-white font-semibold rounded-[10px] h-[38px] text-[13px] normal-case shadow-none transition-colors mt-1",
     dividerRow: "order-2 my-2",
-    dividerLine: "bg-[#E7EAED]",
-    dividerText: "text-[11px] font-medium text-[#5B6368] lowercase px-2 bg-white",
+    dividerLine: "bg-[#E3E3E3]",
+    dividerText: "text-[11px] font-medium text-[#757575] lowercase px-2 bg-white",
     socialButtons: "order-3 flex flex-col gap-1.5 m-0",
     socialButtonsRoot: "order-3 m-0",
     socialButtonsBlockButton:
-      "rounded-full border border-[#E7EAED] bg-white hover:bg-[#F0F2F5] text-black text-[13px] font-semibold h-[38px] px-4 transition-all duration-100 hover:scale-[1.01] active:scale-[0.98] shadow-xs",
+      "rounded-full border border-[#E3E3E3] bg-white hover:bg-[#E3E3E3] text-black text-[13px] font-semibold h-[38px] px-4 transition-all duration-100 hover:scale-[1.01] active:scale-[0.98] shadow-xs",
     socialButtonsBlockButtonText: "font-semibold text-[13px] text-black",
     footer: "hidden",
     footerAction: "hidden",
-    identityPreview: "rounded-[10px] border border-[#E7EAED] bg-[#F0F2F5] p-2 text-xs",
+    identityPreview: "rounded-[10px] border border-[#E3E3E3] bg-[#E3E3E3] p-2 text-xs",
   },
 };
 
@@ -123,7 +193,7 @@ interface HomeClientProps {
     logo_url: string | null;
     favicon_url: string | null;
   };
-  initialTab?: "home" | "explore" | "search" | "map" | "activity" | "profile";
+  initialTab?: "home" | "explore" | "search" | "trending" | "map" | "activity" | "profile";
 }
 
 export default function HomeClient({ initialBranding, initialTab = "home" }: HomeClientProps) {
@@ -145,11 +215,13 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
     setAuthData(auth);
   }, []);
   const [listings, setListings] = useState<Listing[]>([]);
+  const initialListingsRequest = useRef<Promise<Listing[]> | null>(null);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [query, setQuery] = useState("");
 
   // Primary Type selection
   const [selectedType, setSelectedType] = useState("All Types");
+  const [searchCategory, setSearchCategory] = useState<ExploreCategory>("All");
 
   // Secondary Type-Specific filter selections
   const [selectedStage, setSelectedStage] = useState("All Stages");
@@ -550,10 +622,65 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
     window.history.replaceState(window.history.state, "", newPath);
   }, [selectedCity, selectedType, selectedStage, selectedSector, selectedRole, selectedVcStage, selectedVcType, query]);
 
+  const filterFetchMounted = useRef(false);
+  const lastListingFilterKey = useRef("");
+  useEffect(() => {
+    if (!filterFetchMounted.current) {
+      filterFetchMounted.current = true;
+      const initialFilters = new URLSearchParams();
+      for (const key of ["city", "type", "stage", "sector", "role", "vc_stage", "vc_type", "q"]) {
+        const value = new URLSearchParams(window.location.search).get(key);
+        if (value) initialFilters.set(key, value);
+      }
+      lastListingFilterKey.current = initialFilters.toString();
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = buildListingFilterParams({
+          city: selectedCity,
+          type: selectedType,
+          stage: selectedStage,
+          sector: selectedSector,
+          role: selectedRole,
+          vcStage: selectedVcStage,
+          vcType: selectedVcType,
+          query,
+        });
+        if (params.toString() === lastListingFilterKey.current) return;
+        lastListingFilterKey.current = params.toString();
+        setListings([]);
+        await fetchListingPages(params, controller.signal, (items) => {
+          if (!controller.signal.aborted) setListings((current) => mergeListingsById(current, items));
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) console.error("Failed to load filtered listings:", error);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selectedCity, selectedType, selectedStage, selectedSector, selectedRole, selectedVcStage, selectedVcType, query]);
+
   const loadListings = async () => {
     try {
-      const data = await fetchListings();
-      setListings(data);
+      const params = buildListingFilterParams({
+        city: selectedCity,
+        type: selectedType,
+        stage: selectedStage,
+        sector: selectedSector,
+        role: selectedRole,
+        vcStage: selectedVcStage,
+        vcType: selectedVcType,
+        query,
+      });
+      setListings([]);
+      const loadedListings = await fetchListingPages(params);
+      setListings(loadedListings);
     } catch (err) {
       console.error("Failed to load listings:", err);
     }
@@ -879,11 +1006,18 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
   useEffect(() => {
     async function initData() {
       try {
-        const res = await fetch("/api/listings");
-        if (res.ok) {
-          const data = await res.json();
-          const listingsData: Listing[] = Array.isArray(data) ? data : (data.listings || []);
-          setListings(listingsData);
+        const initialUrlParams = new URLSearchParams(window.location.search);
+        const initialFilters = new URLSearchParams();
+        for (const key of ["city", "type", "stage", "sector", "role", "vc_stage", "vc_type", "q"]) {
+          const value = initialUrlParams.get(key);
+          if (value) initialFilters.set(key, value);
+        }
+        if (!initialListingsRequest.current) {
+          initialListingsRequest.current = fetchListingPages(initialFilters);
+        }
+        const listingsData = await initialListingsRequest.current;
+        setListings((current) => mergeListingsById(current, listingsData));
+        if (listingsData) {
 
           // Check browser pathname or URL query params for profile slug
           if (typeof window !== "undefined") {
@@ -1214,8 +1348,8 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
           </>
         ) : (
           <ProfileAvatarStack
-            userId={clerkUser?.id || "demo_user"}
-            userEmail={clerkUser?.primaryEmailAddress?.emailAddress || "founder@startupmap.in"}
+            userId={clerkUser?.id || ""}
+            userEmail={clerkUser?.primaryEmailAddress?.emailAddress || ""}
             userInitials={
               clerkUser?.firstName
                 ? clerkUser.firstName.substring(0, 2).toUpperCase()
@@ -1241,7 +1375,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
 
         {tab === "home" && leftView !== "spotlight-story" && (
           <SpotlightsBar
-            userId={clerkUser?.id || "demo_user"}
+            userId={clerkUser?.id || ""}
             isSignedIn={isSignedIn || false}
             onRequireAuth={() => navigateTo("sign-in")}
             onSelectSpotlight={(stories, index) => {
@@ -1280,12 +1414,14 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
                 selectedListingId={selected?.id || null}
                 query={query}
                 onQueryChange={setQuery}
-                selectedCategory={selectedType === "Startups" ? "Startups" : selectedType === "People" ? "People" : "All"}
+                selectedCategory={searchCategory}
                 onCategoryChange={(cat) => {
+                  setSearchCategory(cat);
                   if (cat === "Startups") handleTypeSelect("Startups");
                   else if (cat === "People") handleTypeSelect("People");
                   else handleTypeSelect("All Types");
                 }}
+                viewMode={tab === "map" ? "map" : "search"}
                 onSelectListing={(item) => {
                   handleSelectListing(item);
                   map?.flyTo({
@@ -1299,7 +1435,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
                     setMobileTab("map");
                   }
                 }}
-                onOpenStudio={(item) => {
+                onOpenStudio={(item: Listing) => {
                   setSelected(item);
                   setActiveProfileForStudio(item);
                   navigateTo("studio", item);
@@ -1308,22 +1444,34 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
                 onToggleMobileTab={setMobileTab}
               />
             )}
-            {tab === "activity" && <ActivityPage userId={clerkUser?.id || "demo_user"} isSignedIn={!!isSignedIn} onRequireAuth={() => navigateTo("sign-in")} />}
+            {tab === "activity" && <ActivityPage userId={clerkUser?.id || ""} isSignedIn={!!isSignedIn} onRequireAuth={() => navigateTo("sign-in")} />}
 
             {tab === "home" && (leftView === "explore" || leftView === "feed" || leftView === "sign-in" || leftView === "sign-up") && (
               <CommunityFeed
-                userId={clerkUser?.id || "demo_user"}
-                userEmail={clerkUser?.primaryEmailAddress?.emailAddress || "founder@startupmap.in"}
-                userName={clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : "Ecosystem Founder"}
+                userId={clerkUser?.id || ""}
+                userName={clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : ""}
                 userAvatar={clerkUser?.imageUrl}
                 isSignedIn={isSignedIn || false}
                 userInterests={userInterests}
                 userJoinedCommunities={userJoinedCommunities}
-                mobileTab={mobileTab}
-                onToggleMobileTab={(tab) => setMobileTab(tab)}
                 onRequireAuth={() => navigateTo("sign-in")}
                 onOpenAddListing={() => navigateTo("add-listing")}
                 onSelectAuthorHandle={(handle) => handleOpenProfileByHandle(handle)}
+              />
+            )}
+            {tab === "trending" && (
+              <CommunityFeed
+                userId={clerkUser?.id || ""}
+                userName={clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim() : ""}
+                userAvatar={clerkUser?.imageUrl}
+                isSignedIn={Boolean(isSignedIn)}
+                userInterests={userInterests}
+                userJoinedCommunities={userJoinedCommunities}
+                onRequireAuth={() => navigateTo("sign-in")}
+                onOpenAddListing={() => navigateTo("add-listing")}
+                onSelectAuthorHandle={(handle) => handleOpenProfileByHandle(handle)}
+                initialFeedTab="trending"
+                showFeedModeSelector={false}
               />
             )}
             {leftView === "studio" && activeProfileForStudio && (
@@ -1348,10 +1496,11 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
 
             {(tab === "profile" || leftView === "profile") && (
               <UserProfilePanel
-                userId={clerkUser?.id || "demo_user"}
+                userId={clerkUser?.id || ""}
                 isSignedIn={Boolean(isSignedIn)}
+                isAuthLoaded={isClerkLoaded}
                 onRequireAuth={() => navigateTo("sign-in")}
-                userEmail={clerkUser?.primaryEmailAddress?.emailAddress || "founder@startupmap.in"}
+                userEmail={clerkUser?.primaryEmailAddress?.emailAddress || ""}
                 userInitials={
                   clerkUser?.firstName
                     ? clerkUser.firstName.substring(0, 2).toUpperCase()
@@ -1374,7 +1523,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
 
             {leftView === "add-listing" && (
               <AddListingForm
-                userId={clerkUser?.id || "clerk_user"}
+                userId={clerkUser?.id || ""}
                 pickedCoords={pickedCoords}
                 setPickedCoords={setPickedCoords}
                 onCancel={() => {
@@ -1414,7 +1563,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
               {selected.logo_url ? (
                 <img src={selected.logo_url} alt={selected.name} className="mobile-card-avatar" />
               ) : (
-                <div className="mobile-card-avatar-initials" style={{ backgroundColor: selected.color || "#f85900" }}>
+                <div className="mobile-card-avatar-initials" style={{ backgroundColor: selected.color || "#000000" }}>
                   {selected.initials}
                 </div>
               )}
@@ -1752,13 +1901,13 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
             ))}
           </Map>
         ) : (
-          <div className="map-fill bg-slate-900 flex items-center justify-center text-slate-400 font-sans text-xs font-semibold">
+          <div className="map-fill bg-[#E3E3E3] flex items-center justify-center text-[#757575] font-sans text-xs font-semibold">
             Loading Map...
           </div>
         )}
         {isMounted && !map && (
           <div style={{ position: "absolute", inset: 0, zIndex: 4, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-            <div role={mapError ? "alert" : "status"} style={{ pointerEvents: "auto", background: "rgba(255,255,255,0.96)", padding: "16px 20px", borderRadius: 12, boxShadow: "0 4px 20px rgba(0,0,0,.12)", textAlign: "center", color: "#111827" }}>
+            <div role={mapError ? "alert" : "status"} style={{ pointerEvents: "auto", background: "rgba(255,255,255,0.96)", padding: "16px 20px", borderRadius: 12, boxShadow: "0 4px 20px rgba(0,0,0,.12)", textAlign: "center", color: "#000000" }}>
               <p style={{ margin: "0 0 10px", fontWeight: 700 }}>{mapError ? "The map could not load." : "Loading map…"}</p>
               {mapError && <button type="button" className="submit-form-btn" onClick={() => { setMapError(false); setMap(null); setMapRetryKey((key) => key + 1); }}>Retry map</button>}
             </div>
@@ -1793,7 +1942,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
       {/* Twitter/X Style Feed Onboarding Modal */}
       <FeedOnboardingModal
         isOpen={showFeedOnboarding}
-        userId={clerkUser?.id || "demo_user"}
+        userId={clerkUser?.id || ""}
         onDismiss={() => {
           if (clerkUser?.id) localStorage.setItem(`startupmap_feed_onboarding_dismissed_${clerkUser.id}`, String(Date.now()));
           setShowFeedOnboarding(false);
@@ -1838,13 +1987,13 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
           >
             {/* Chrome Navigation: Segmented Switcher Pill + Dismiss Button */}
             <div className="flex items-center justify-between mb-2">
-              <div className="inline-flex items-center p-0.5 bg-[#F0F2F5] rounded-full text-xs font-semibold">
+              <div className="inline-flex items-center p-0.5 bg-[#E3E3E3] rounded-full text-xs font-semibold">
                 <button
                   type="button"
                   className={`py-1 px-3.5 rounded-full transition-all duration-100 ${
                     leftView === "sign-in"
                       ? "bg-white text-black shadow-xs font-semibold"
-                      : "text-[#5B6368] hover:text-black font-medium"
+                      : "text-[#757575] hover:text-black font-medium"
                   }`}
                   onClick={() => navigateTo("sign-in")}
                 >
@@ -1855,7 +2004,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
                   className={`py-1 px-3.5 rounded-full transition-all duration-100 ${
                     leftView === "sign-up"
                       ? "bg-white text-black shadow-xs font-semibold"
-                      : "text-[#5B6368] hover:text-black font-medium"
+                      : "text-[#757575] hover:text-black font-medium"
                   }`}
                   onClick={() => navigateTo("sign-up")}
                 >
@@ -1865,7 +2014,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
 
               <button
                 type="button"
-                className="flex items-center justify-center w-7 h-7 rounded-full bg-[#F0F2F5] hover:bg-[#E7EAED] text-[#5B6368] hover:text-black transition-colors text-xs font-semibold"
+                className="flex items-center justify-center w-7 h-7 rounded-full bg-[#E3E3E3] hover:bg-[#E3E3E3] text-[#757575] hover:text-black transition-colors text-xs font-semibold"
                 onClick={() => navigateTo("explore")}
                 title="Close"
                 aria-label="Close sign in dialog"
@@ -1884,7 +2033,7 @@ export default function HomeClient({ initialBranding, initialTab = "home" }: Hom
               <h2 id="auth-modal-title" className="text-[17px] font-bold tracking-tight text-black">
                 {leftView === "sign-in" ? "Welcome back" : "Join The Startup Map"}
               </h2>
-              <p className="text-[11.5px] text-[#5B6368] mt-0.5">
+              <p className="text-[11.5px] text-[#757575] mt-0.5">
                 {leftView === "sign-in" ? "Enter your email to continue" : "Create your account in seconds"}
               </p>
             </div>

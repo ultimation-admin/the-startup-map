@@ -2,7 +2,7 @@ import React from "react";
 
 export function CommunityFeedSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <div className="community-feed-skeleton" style={{ display: "flex", flexDirection: "column" }}>
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
@@ -40,31 +40,27 @@ export function CommunityFeedSkeleton({ count = 3 }: { count?: number }) {
 
 export function ProfileStudioSkeleton() {
   return (
-    <div style={{ background: "#ffffff", borderRadius: "16px", padding: "24px", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
-      {/* Header Bar */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
-        <div className="skeleton-pulse" style={{ width: "80px", height: "32px", borderRadius: "8px" }} />
-        <div className="skeleton-pulse" style={{ width: "140px", height: "24px", borderRadius: "9999px" }} />
+    <div className="profile-studio-skeleton" role="status" aria-label="Loading profile">
+      <div className="profile-studio-skeleton-header">
+        <div className="skeleton-pulse profile-studio-skeleton-back" />
+        <div className="skeleton-pulse profile-studio-skeleton-title" />
       </div>
-
-      {/* Profile Header Card */}
-      <div style={{ display: "flex", alignItems: "center", gap: "16px", padding: "20px", background: "#f9fafb", borderRadius: "16px", border: "1px solid #e5e7eb", marginBottom: "20px" }}>
-        <div className="skeleton-pulse" style={{ width: "64px", height: "64px", borderRadius: "50%" }} />
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
-          <div className="skeleton-pulse" style={{ width: "90px", height: "18px", borderRadius: "6px" }} />
-          <div className="skeleton-pulse" style={{ width: "160px", height: "22px" }} />
-          <div className="skeleton-pulse" style={{ width: "130px", height: "14px" }} />
+      <div className="profile-studio-skeleton-hero">
+        <div className="skeleton-pulse profile-studio-skeleton-avatar" />
+        <div className="profile-studio-skeleton-identity">
+          <div className="skeleton-pulse profile-studio-skeleton-name" />
+          <div className="skeleton-pulse profile-studio-skeleton-handle" />
+          <div className="profile-studio-skeleton-actions">
+            <div className="skeleton-pulse" />
+            <div className="skeleton-pulse" />
+          </div>
         </div>
       </div>
-
-      {/* Tabs Row */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
-        <div className="skeleton-pulse" style={{ width: "100px", height: "36px", borderRadius: "8px" }} />
-        <div className="skeleton-pulse" style={{ width: "100px", height: "36px", borderRadius: "8px" }} />
-        <div className="skeleton-pulse" style={{ width: "100px", height: "36px", borderRadius: "8px" }} />
+      <div className="profile-studio-skeleton-tabs" aria-hidden="true">
+        <div className="skeleton-pulse" />
+        <div className="skeleton-pulse" />
+        <div className="skeleton-pulse" />
       </div>
-
-      {/* Content Stack */}
       <CommunityFeedSkeleton count={2} />
     </div>
   );

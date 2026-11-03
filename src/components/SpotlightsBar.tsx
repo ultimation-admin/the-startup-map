@@ -51,25 +51,18 @@ export function SpotlightsBar({
 
   useEffect(() => {
     loadSpotlights();
-    const interval = setInterval(() => {
-      if (typeof document !== "undefined" && !document.hidden) {
-        loadSpotlights();
-      }
-    }, 60000);
-
-    const handleFocus = () => {
-      loadSpotlights();
+    let lastRefresh = Date.now();
+    const refreshWhenActive = () => {
+      if (document.hidden || Date.now() - lastRefresh < 30000) return;
+      lastRefresh = Date.now();
+      void loadSpotlights();
     };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", handleFocus);
-    }
+    window.addEventListener("focus", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
 
     return () => {
-      clearInterval(interval);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", handleFocus);
-      }
+      window.removeEventListener("focus", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
     };
   }, []);
 
@@ -122,7 +115,7 @@ export function SpotlightsBar({
         logo_url: target.logo_url,
         media_url: mediaUrl || target.logo_url,
         media_type: mediaType,
-        color: target.color || "#f85900",
+        color: target.color || "#000000",
         initials: target.initials || target.name.substring(0, 2).toUpperCase(),
         city: target.city,
         website_url: target.website,
@@ -140,7 +133,7 @@ export function SpotlightsBar({
         type: "startup",
         media_url: mediaUrl,
         media_type: mediaType,
-        color: "#f85900",
+        color: "#000000",
         initials: customName.substring(0, 2).toUpperCase(),
         city: customCity,
         website_url: customWebsite,

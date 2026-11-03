@@ -287,10 +287,11 @@ export async function uploadR2Buffer({
 /**
  * Get an object from R2 by its key.
  */
-export async function getR2Object(fileKey: string) {
+export async function getR2Object(fileKey: string, range?: string | null) {
   const command = new GetObjectCommand({
     Bucket: R2_BUCKET_NAME,
     Key: fileKey,
+    Range: range || undefined,
   });
   return await getR2Client().send(command);
 }
